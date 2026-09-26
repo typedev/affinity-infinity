@@ -7,7 +7,7 @@ ROOT=$(dirname "$(dirname "$SELF")")
 
 # shellcheck source=../versions.env
 source "$ROOT/versions.env"
-for _lib in common setup affinity apl fonts dpi desktop; do
+for _lib in common setup affinity apl fonts webview2 dpi desktop; do
     # shellcheck source=/dev/null
     source "$ROOT/lib/$_lib.sh"
 done
@@ -31,6 +31,9 @@ Commands:
   run [FILE...]      Start Affinity.
   dpi [auto|N|--gui] Show or set the interface scale (96..480, auto = from desktop).
   desktop            Install a menu entry and file associations.
+  webview2           EXPERIMENTAL: install the WebView2 runtime for web panels.
+                     With Wine 11.0 its browser process crashes and takes
+                     Affinity down when Help is opened.
   status             Show versions and paths.
 
 Data:   $DATA_DIR
@@ -164,6 +167,7 @@ prefix:          $([[ -f "$PREFIX_DIR/system.reg" ]] && echo "$PREFIX_DIR" || ec
 affinity:        ${installed:-not installed}
 installer etag:  $(state_get INSTALLED_ETAG -)
 plugin loader:   $(state_get APL_VERSION -) (pinned: $APL_VERSION)
+webview2:        $(v=$(webview2_version); echo "${v:-not installed}")
 dpi:             $(config_get DPI auto) -> $(effective_dpi)
 last check:      $(t=$(state_get LAST_CHECK); [[ -n "$t" ]] && date -d "@$t" || echo never)
 EOF
@@ -180,6 +184,7 @@ main() {
         run) cmd_run "$@" ;;
         dpi) cmd_dpi "$@" ;;
         desktop) install_desktop ;;
+        webview2) require_setup; wine_env; webview2_install ;;
         status) cmd_status ;;
         "" | -h | --help | help) usage ;;
         *) usage >&2; exit 2 ;;
