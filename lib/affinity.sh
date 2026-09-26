@@ -11,37 +11,17 @@ INSTALLER_EXE="$CACHE_DIR/Affinity-x64.exe"
 # Sets REMOTE_ETAG, REMOTE_SIZE, REMOTE_MODIFIED from a HEAD request.
 remote_info() {
     local headers
-    headers=$(curl -sfIL --max-time 30 "$AFFINITY_URL" | tr -d '\r') || return 1
+    headers=$(curl -sfIL --connect-timeout 3 --max-time 10 "$AFFINITY_URL" | tr -d '\r') || return 1
     # With redirects, the last value of each header belongs to the final response.
     REMOTE_ETAG=$(awk -F': ' 'tolower($1)=="etag"{v=$2} END{print v}' <<<"$headers" | tr -d '"')
     REMOTE_SIZE=$(awk -F': ' 'tolower($1)=="content-length"{v=$2} END{print v}' <<<"$headers")
+    # shellcheck disable=SC2034 # used by update.sh
     REMOTE_MODIFIED=$(awk -F': ' 'tolower($1)=="last-modified"{v=$2} END{print v}' <<<"$headers")
     [[ -n "$REMOTE_ETAG" && -n "$REMOTE_SIZE" ]]
 }
 
 installed_version() {
     [[ -f "$AFFINITY_DIR/Affinity.exe" ]] && pe_file_version "$AFFINITY_DIR/Affinity.exe"
-}
-
-# Returns 0 if an update (or first install) is available, 1 if up to date, 2 on error.
-check_update() {
-    local quiet=${1:-0}
-    remote_info || { [[ "$quiet" == 1 ]] || warn "could not reach $AFFINITY_URL"; return 2; }
-    state_set LAST_CHECK "$(date +%s)"
-
-    local installed etag
-    installed=$(installed_version)
-    etag=$(state_get INSTALLED_ETAG)
-    if [[ -z "$installed" ]]; then
-        [[ "$quiet" == 1 ]] || log "Affinity is not installed; latest installer published $REMOTE_MODIFIED"
-        return 0
-    fi
-    if [[ "$etag" == "$REMOTE_ETAG" ]]; then
-        [[ "$quiet" == 1 ]] || log "Affinity $installed is up to date"
-        return 1
-    fi
-    [[ "$quiet" == 1 ]] || log "update available: installed $installed, new installer published $REMOTE_MODIFIED"
-    return 0
 }
 
 download_installer() {
@@ -163,8 +143,12 @@ REGEDIT4
 EOF
 }
 
+# Match the processes' own command lines (Wine shows the Windows path), not any
+# process that merely mentions Affinity.exe in its arguments.
+AFFINITY_PROC_RE='^C:\\Program Files\\Affinity\\Affinity\\Affinity(Hook)?\.exe'
+
 affinity_running() {
-    pgrep -f 'Affinity(Hook)?\.exe' >/dev/null
+    pgrep -f "$AFFINITY_PROC_RE" >/dev/null
 }
 
 # install_affinity [--exe FILE | --msi FILE] [--force]
@@ -187,7 +171,7 @@ install_affinity() {
     if [[ -z "$exe" && -z "$msi" ]]; then
         if [[ "$force" != 1 ]]; then
             local rc=0
-            check_update 1 || rc=$?
+            find_update || rc=$?
             if ((rc == 1)); then
                 log "Affinity $(installed_version) is already up to date (use --force to reinstall)"
                 return 0

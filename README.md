@@ -42,8 +42,12 @@ Prefix fixes applied automatically (and once more on `run` when they change):
   [Selawik](https://github.com/microsoft/Selawik) (OFL), renamed locally to "Segoe UI"
   (needs `python3`; otherwise the UI uses Tahoma).
 
-`run` also checks once a day in the background and shows a notification when an update
-is available. The menu entry has "Check for updates" and "Interface scale…" actions.
+`run` checks for a new Affinity on every start: a HEAD request (~0.2 s) compares the
+installer's ETag, and only when it changed are the last 2 MB of the installer fetched to
+read its exact version. If it is newer, a dialog offers **Install**, **Later** or
+**Skip this version**; a failed check or update never prevents Affinity from starting
+(offline, the start is delayed by at most ~3 s). `AUTO_UPDATE_CHECK=0` in the config
+turns this off. The menu entry has "Check for updates" and "Interface scale…" actions.
 
 ### Interface scale (4K / HiDPI)
 

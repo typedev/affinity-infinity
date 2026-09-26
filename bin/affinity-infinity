@@ -7,13 +7,11 @@ ROOT=$(dirname "$(dirname "$SELF")")
 
 # shellcheck source=../versions.env
 source "$ROOT/versions.env"
-for _lib in common setup affinity apl fonts webview2 dpi desktop; do
+for _lib in common setup affinity update apl fonts webview2 dpi desktop; do
     # shellcheck source=/dev/null
     source "$ROOT/lib/$_lib.sh"
 done
 unset _lib
-
-UPDATE_CHECK_INTERVAL=$((24 * 3600))
 
 usage() {
     cat <<EOF
@@ -28,7 +26,8 @@ Commands:
                      unless FILE is given) plus AffinityPluginLoader/WineFix.
   update [--gui]     Install a newer Affinity if one was published.
   check              Check for a newer Affinity (exit 0 = update available).
-  run [FILE...]      Start Affinity.
+  run [FILE...]      Start Affinity. Offers to install a newer Affinity first
+                     (AUTO_UPDATE_CHECK=0 in the config turns this off).
   dpi [auto|N|--gui] Show or set the interface scale (96..480, auto = from desktop).
   desktop            Install a menu entry and file associations.
   webview2           EXPERIMENTAL: install the WebView2 runtime for web panels.
@@ -56,7 +55,14 @@ cmd_setup() {
 
 cmd_check() {
     require_setup
-    check_update
+    local rc=0
+    find_update || rc=$?
+    case $rc in
+        0) log "update available: ${NEW_VERSION} (installed: $(installed_version))" ;;
+        1) log "Affinity $(installed_version) is up to date" ;;
+        *) warn "could not reach $AFFINITY_URL" ;;
+    esac
+    return $rc
 }
 
 cmd_update() {
@@ -64,37 +70,21 @@ cmd_update() {
     [[ "${1:-}" == --gui ]] && gui=1
     require_setup
     local rc=0
-    check_update || rc=$?
+    find_update || rc=$?
     case $rc in
         1)
+            log "Affinity $(installed_version) is up to date"
             [[ $gui == 1 ]] && zenity --info --title="Affinity" --text="Affinity $(installed_version) is up to date." 2>/dev/null
             return 0
             ;;
         2) die "could not check for updates" ;;
     esac
-    if [[ $gui == 1 ]]; then
-        zenity --question --title="Affinity" --ok-label="Update" \
-            --text="A new Affinity version is available (published $REMOTE_MODIFIED).\nInstalled: $(installed_version)\n\nDownload and install it now?" 2>/dev/null || return 0
+    if [[ $gui == 1 && "$(ask_update)" != install ]]; then
+        return 0
     fi
     install_affinity --force
     [[ $gui == 1 ]] && zenity --info --title="Affinity" --text="Affinity $(installed_version) installed." 2>/dev/null
     return 0
-}
-
-# Remind about updates at most once a day, without delaying startup.
-background_update_check() {
-    [[ "$(config_get AUTO_UPDATE_CHECK 1)" == 1 ]] || return 0
-    local last now
-    last=$(state_get LAST_CHECK 0)
-    now=$(date +%s)
-    ((now - last >= UPDATE_CHECK_INTERVAL)) || return 0
-    (
-        if check_update 1 && command -v notify-send >/dev/null; then
-            notify-send -i "$DATA_DIR/icon.svg" "Affinity update available" \
-                "Use 'Check for updates' in the Affinity menu entry, or run: $AI_NAME update"
-        fi
-    ) </dev/null >/dev/null 2>&1 &
-    disown
 }
 
 cmd_run() {
@@ -107,13 +97,14 @@ cmd_run() {
         else
             die "Affinity is not installed; run: $AI_NAME install"
         fi
+    else
+        startup_update_check
     fi
 
     [[ -f "$AFFINITY_DIR/d3d12.dll" ]] || install_d3d12
     wine_env
     [[ "$(state_get PREFIX_CONFIGURED)" == "$PREFIX_CONFIG_REV" ]] || prefix_configure
     apply_dpi
-    background_update_check
 
     # Hand files over as Windows paths.
     local -a args=()
