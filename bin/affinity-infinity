@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+# affinity-infinity: run Affinity by Canva on Linux in a self-updating Wine sandbox.
+set -uo pipefail
+
+SELF=$(readlink -f "${BASH_SOURCE[0]}")
+ROOT=$(dirname "$(dirname "$SELF")")
+
+# shellcheck source=../versions.env
+source "$ROOT/versions.env"
+for _lib in common setup affinity apl dpi desktop; do
+    # shellcheck source=/dev/null
+    source "$ROOT/lib/$_lib.sh"
+done
+unset _lib
+
+UPDATE_CHECK_INTERVAL=$((24 * 3600))
+
+usage() {
+    cat <<EOF
+Usage: $AI_NAME <command> [options]
+
+Commands:
+  setup --from-appimage PATH [--force]
+                     Create the Wine runtime and prefix from an Affinity AppImage
+                     (the Affinity inside it is not used).
+  install [--exe FILE | --msi FILE] [--force]
+                     Install Affinity from the official installer (downloaded
+                     unless FILE is given) plus AffinityPluginLoader/WineFix.
+  update [--gui]     Install a newer Affinity if one was published.
+  check              Check for a newer Affinity (exit 0 = update available).
+  run [FILE...]      Start Affinity.
+  dpi [auto|N|--gui] Show or set the interface scale (96..480, auto = from desktop).
+  desktop            Install a menu entry and file associations.
+  status             Show versions and paths.
+
+Data:   $DATA_DIR
+Config: $CONFIG_FILE
+EOF
+}
+
+cmd_setup() {
+    local appimage="" force=0
+    while (($#)); do
+        case $1 in
+            --from-appimage) appimage=${2:-}; shift 2 ;;
+            --force) force=1; shift ;;
+            *) die "unknown setup option: $1" ;;
+        esac
+    done
+    [[ -n "$appimage" ]] || die "usage: $AI_NAME setup --from-appimage PATH"
+    setup_from_appimage "$appimage" "$force"
+}
+
+cmd_check() {
+    require_setup
+    check_update
+}
+
+cmd_update() {
+    local gui=0
+    [[ "${1:-}" == --gui ]] && gui=1
+    require_setup
+    local rc=0
+    check_update || rc=$?
+    case $rc in
+        1)
+            [[ $gui == 1 ]] && zenity --info --title="Affinity" --text="Affinity $(installed_version) is up to date." 2>/dev/null
+            return 0
+            ;;
+        2) die "could not check for updates" ;;
+    esac
+    if [[ $gui == 1 ]]; then
+        zenity --question --title="Affinity" --ok-label="Update" \
+            --text="A new Affinity version is available (published $REMOTE_MODIFIED).\nInstalled: $(installed_version)\n\nDownload and install it now?" 2>/dev/null || return 0
+    fi
+    install_affinity --force
+    [[ $gui == 1 ]] && zenity --info --title="Affinity" --text="Affinity $(installed_version) installed." 2>/dev/null
+    return 0
+}
+
+# Remind about updates at most once a day, without delaying startup.
+background_update_check() {
+    [[ "$(config_get AUTO_UPDATE_CHECK 1)" == 1 ]] || return 0
+    local last now
+    last=$(state_get LAST_CHECK 0)
+    now=$(date +%s)
+    ((now - last >= UPDATE_CHECK_INTERVAL)) || return 0
+    (
+        if check_update 1 && command -v notify-send >/dev/null; then
+            notify-send -i "$DATA_DIR/icon.svg" "Affinity update available" \
+                "Use 'Check for updates' in the Affinity menu entry, or run: $AI_NAME update"
+        fi
+    ) </dev/null >/dev/null 2>&1 &
+    disown
+}
+
+cmd_run() {
+    require_setup
+    if [[ ! -f "$AFFINITY_DIR/AffinityHook.exe" ]]; then
+        if gui_mode; then
+            zenity --question --title="Affinity" --ok-label="Install" \
+                --text="Affinity is not installed yet.\nDownload it from affinity.studio and install it now?" 2>/dev/null || exit 0
+            install_affinity
+        else
+            die "Affinity is not installed; run: $AI_NAME install"
+        fi
+    fi
+
+    [[ -f "$AFFINITY_DIR/d3d12.dll" ]] || install_d3d12
+    wine_env
+    apply_dpi
+    background_update_check
+
+    # Hand files over as Windows paths.
+    local -a args=()
+    local a
+    for a in "$@"; do
+        if [[ -e "$a" ]]; then
+            args+=("$(to_winpath "$(readlink -f "$a")")")
+        else
+            args+=("$a")
+        fi
+    done
+
+    cd "$AFFINITY_DIR" || die "cannot enter $AFFINITY_DIR"
+    exec "$WINE_ROOT/bin/wine" "$AFFINITY_WIN_DIR\\AffinityHook.exe" "${args[@]}"
+}
+
+cmd_dpi() {
+    case "${1:-}" in
+        "")
+            echo "configured: $(config_get DPI auto)"
+            echo "detected:   $(detect_dpi)"
+            echo "effective:  $(effective_dpi)"
+            ;;
+        --gui) dpi_dialog >/dev/null ;;
+        auto) config_set DPI auto ;;
+        *[!0-9]*) die "DPI must be 'auto' or a number between $DPI_MIN and $DPI_MAX" ;;
+        *)
+            (($1 >= DPI_MIN && $1 <= DPI_MAX)) || die "DPI must be between $DPI_MIN and $DPI_MAX"
+            config_set DPI "$1"
+            ;;
+    esac
+    [[ -n "${1:-}" ]] && log "interface scale: $(config_get DPI) (applied on next start: $(effective_dpi) DPI)"
+    return 0
+}
+
+cmd_status() {
+    local wine_version="" installed=""
+    is_setup && wine_version=$(state_get WINE_VERSION)
+    installed=$(installed_version)
+    cat <<EOF
+data dir:        $DATA_DIR
+runtime:         ${wine_version:-not set up}
+prefix:          $([[ -f "$PREFIX_DIR/system.reg" ]] && echo "$PREFIX_DIR" || echo "not set up")
+affinity:        ${installed:-not installed}
+installer etag:  $(state_get INSTALLED_ETAG -)
+plugin loader:   $(state_get APL_VERSION -) (pinned: $APL_VERSION)
+dpi:             $(config_get DPI auto) -> $(effective_dpi)
+last check:      $(t=$(state_get LAST_CHECK); [[ -n "$t" ]] && date -d "@$t" || echo never)
+EOF
+}
+
+main() {
+    local cmd=${1:-}
+    (($#)) && shift
+    case $cmd in
+        setup) cmd_setup "$@" ;;
+        install) install_affinity "$@" ;;
+        update) cmd_update "$@" ;;
+        check) cmd_check ;;
+        run) cmd_run "$@" ;;
+        dpi) cmd_dpi "$@" ;;
+        desktop) install_desktop ;;
+        status) cmd_status ;;
+        "" | -h | --help | help) usage ;;
+        *) usage >&2; exit 2 ;;
+    esac
+}
+
+main "$@"
