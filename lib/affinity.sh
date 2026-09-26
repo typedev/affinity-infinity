@@ -282,7 +282,7 @@ exit_watchdog() {
 }
 
 # Bump when prefix_configure changes, so existing prefixes get reconfigured on next run.
-PREFIX_CONFIG_REV=5
+PREFIX_CONFIG_REV=6
 
 # Per-application Wine settings for Affinity, independent of the Affinity version.
 prefix_configure() {
@@ -294,6 +294,10 @@ REGEDIT4
 
 [HKEY_CURRENT_USER\Software\Wine\AppDefaults\Affinity.exe\DllOverrides]
 "d2d1"="native,builtin"
+
+[HKEY_CURRENT_USER\Software\Wine\DllOverrides]
+"d3d12"="native,builtin"
+"d3d12core"="native,builtin"
 EOF
     fix_font_registry
     install_segoe_ui

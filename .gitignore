@@ -1,1 +1,4 @@
 .venv/
+wine/out/
+wine/.cache/
+packaging/out/

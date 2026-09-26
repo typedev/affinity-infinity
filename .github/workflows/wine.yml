@@ -1,0 +1,43 @@
+name: Build Wine
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['wine/**', '.github/workflows/wine.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    # Oldest supported glibc baseline; keep in sync with BUILD_IMAGE in wine/build.env.
+    container: ubuntu:22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive xargs -a wine/deps-ubuntu.txt apt-get install -y --no-install-recommends
+
+      - name: Build
+        run: WORK=/tmp/wine-build wine/build.sh "$PWD/out"
+
+      - name: Release name
+        id: meta
+        run: |
+          . wine/build.env
+          echo "name=$AI_WINE_NAME" >>"$GITHUB_OUTPUT"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.name }}
+          name: ${{ steps.meta.outputs.name }}
+          body_path: out/BUILD.txt
+          files: |
+            out/*.tar.xz
+            out/*.sha256

@@ -46,10 +46,7 @@ setup_from_appimage() {
     ln -sfn / "$pfx/dosdevices/z:"
     retarget_user_paths "$pfx"
 
-    if [[ -d "$PREFIX_DIR" ]]; then
-        log "replacing existing prefix $PREFIX_DIR"
-        rm -rf "$PREFIX_DIR"
-    fi
+    prefix_backup
     mv "$pfx" "$PREFIX_DIR"
     [[ -f "$root/affinity.svg" ]] && cp "$root/affinity.svg" "$DATA_DIR/icon.svg"
 
@@ -68,6 +65,30 @@ setup_from_appimage() {
 
     import_legacy_dpi
     log "environment ready in $DATA_DIR"
+}
+
+# Identifies the Wine build: our builds carry a BUILD file (same Wine version
+# can ship with different patches); otherwise the plain version string.
+wine_build_id() {
+    if [[ -f "$WINE_ROOT/BUILD" ]]; then
+        head -1 "$WINE_ROOT/BUILD"
+    else
+        wine --version 2>/dev/null
+    fi
+}
+
+# After the Wine build changed (e.g. a new AppImage), update the prefix to it
+# before starting anything else in it. Expects wine_env.
+sync_wine_build() {
+    local build
+    build=$(wine_build_id)
+    [[ -n "$build" ]] || die "bundled Wine does not run on this system ($WINE_ROOT)"
+    [[ "$(state_get WINE_VERSION)" == "$build" ]] && return 0
+    log "updating the Wine prefix for $build..."
+    WINEDLLOVERRIDES="mscoree,mshtml=;$WINEDLLOVERRIDES" with_spinner "Updating the Windows environment..." \
+        wine wineboot -u >/dev/null 2>&1 || warn "wineboot -u returned an error"
+    wineserver -w
+    state_set WINE_VERSION "$build"
 }
 
 # The seeded registry points TEMP, Documents etc. at C:\users\<builder>, which

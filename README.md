@@ -4,28 +4,47 @@ Run [Affinity by Canva](https://www.affinity.studio/) on Linux in a Wine sandbox
 installs and updates Affinity **from the official installer**, so you are not waiting
 for someone to repackage every release.
 
-The sandbox (Wine runtime + prefix with .NET 4.8 / VC++ runtimes) is separate from
-Affinity itself. Affinity is downloaded from `downloads.affinity.studio`, its embedded
-MSI is installed with Wine's `msiexec` (no installer GUI), and
-[AffinityPluginLoader + WineFix](https://github.com/noahc3/AffinityPluginLoader) are added
-on top to fix Wine-specific bugs.
+Nothing from Microsoft or Canva is redistributed:
 
-## Status
+- **Wine** is built by this project (`wine/`): Wine 11.12 with the Affinity patches
+  from [Affinity-Wine-Builder](https://github.com/ryzendew/Affinity-Wine-Builder)
+  (ElementalWarrior's work, d2d1 fixes, XDG portal file dialogs) plus
+  [vkd3d-proton](https://github.com/HansKristian-Work/vkd3d-proton), on Ubuntu 22.04
+  (glibc 2.35) so it runs on current Ubuntu, Fedora and friends.
+- **The Windows environment** (Wine prefix with .NET Framework 4.8, VC++ 2022, core
+  fonts) is built on your machine on first start by winetricks from Microsoft's
+  installers (~15 minutes, once).
+- **Affinity** is downloaded from `downloads.affinity.studio`; its embedded MSI is
+  unpacked with Wine's `msiexec` (no installer GUI), and
+  [AffinityPluginLoader + WineFix](https://github.com/noahc3/AffinityPluginLoader) are
+  added on top to fix Wine-specific bugs.
 
-Milestone 1: command-line tool. The runtime and base prefix are seeded from an existing
-Affinity AppImage (e.g. from
-[Linux-Affinity-Installer](https://github.com/ryzendew/Linux-Affinity-Installer/releases));
-the Affinity copy inside that AppImage is discarded. A standalone AppImage with a
-reproducibly built prefix is the next milestone.
+Not affiliated with Canva. Affinity is a trademark of Canva.
 
-## Usage
+## AppImage
+
+Download `Affinity-Infinity-<version>-x86_64.AppImage`, make it executable and start it.
+The first start sets up the environment, installs Affinity and offers a menu entry
+(with icon and `.af*` file associations). Needs `fuse3` (preinstalled on desktop
+Ubuntu/Fedora; no `libfuse2`), `zenity` for dialogs and optionally `python3`
+(Segoe UI substitute). Commands work on the AppImage too, e.g.
+`./Affinity-Infinity-*.AppImage status` or `... dpi 192`.
+
+## From the repository
 
 ```sh
-bin/affinity-infinity setup --from-appimage ~/AppImages/Affinity-3.2.0-x86_64.AppImage
+wine/build-in-container.sh                  # build Wine (podman/docker) -> wine/out/
+packaging/build-tools.sh                    # winetricks + cabextract    -> packaging/out/tools
+bin/affinity-infinity setup --wine wine/out/wine-11.12-ai1-x86_64.tar.xz
+AI_TOOLS_DIR=packaging/out/tools bin/affinity-infinity setup   # resume, if needed
 bin/affinity-infinity install      # download + install the latest Affinity
 bin/affinity-infinity desktop      # menu entry, file associations
-bin/affinity-infinity run          # or start "Affinity" from the menu
+bin/affinity-infinity run
+packaging/build-appimage.sh wine/out/wine-11.12-ai1-x86_64.tar.xz   # -> packaging/out/
 ```
+
+`setup --from-appimage PATH` still seeds runtime and prefix from another Affinity
+AppImage (legacy path).
 
 Updates:
 

@@ -6,7 +6,8 @@ AI_NAME=affinity-infinity
 DATA_DIR="${AFFINITY_INFINITY_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/$AI_NAME}"
 CONFIG_DIR="${AFFINITY_INFINITY_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/$AI_NAME}"
 RUNTIME_DIR="$DATA_DIR/runtime"
-WINE_ROOT="$RUNTIME_DIR/current"
+# An AppImage sets AI_WINE_ROOT to its bundled Wine; otherwise the one set up in the data dir.
+WINE_ROOT="${AI_WINE_ROOT:-$RUNTIME_DIR/current}"
 PREFIX_DIR="$DATA_DIR/prefix"
 CACHE_DIR="$DATA_DIR/cache"
 STATE_FILE="$DATA_DIR/state.env"
@@ -14,6 +15,11 @@ CONFIG_FILE="$CONFIG_DIR/config.env"
 
 AFFINITY_DIR="$PREFIX_DIR/drive_c/Program Files/Affinity/Affinity"
 AFFINITY_WIN_DIR='C:\Program Files\Affinity\Affinity'
+
+# What desktop entries should run: the AppImage itself when running from one.
+launcher_path() {
+    printf '%s' "${APPIMAGE:-$SELF}"
+}
 
 # ---------------------------------------------------------------- logging
 
@@ -92,12 +98,18 @@ config_get() { _kv_get "$CONFIG_FILE" "$@"; }
 
 # ---------------------------------------------------------------- wine
 
+has_wine() {
+    [[ -x "$WINE_ROOT/bin/wine" ]]
+}
+
+# PREFIX_READY is 0 while a prefix build is unfinished; prefixes from before it
+# existed have no such key and count as ready.
 is_setup() {
-    [[ -x "$WINE_ROOT/bin/wine" && -f "$PREFIX_DIR/system.reg" ]]
+    has_wine && [[ -f "$PREFIX_DIR/system.reg" && "$(state_get PREFIX_READY 1)" == 1 ]]
 }
 
 require_setup() {
-    is_setup || die "environment is not set up yet; run: $AI_NAME setup --from-appimage <path>"
+    is_setup || die "the Windows environment is not set up yet; run: $AI_NAME setup"
 }
 
 wine_env() {

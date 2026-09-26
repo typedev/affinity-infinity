@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# AppImage entry point: use the bundled Wine and tools, default to `run`.
+HERE=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+export AI_WINE_ROOT="$HERE/wine"
+export AI_TOOLS_DIR="$HERE/tools"
+
+case "${1:-}" in
+    setup | install | update | check | run | dpi | desktop | webview2 | status | help | -h | --help) ;;
+    *) set -- run "$@" ;; # no arguments, or documents to open
+esac
+exec "$HERE/bin/affinity-infinity" "$@"

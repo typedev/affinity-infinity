@@ -7,7 +7,7 @@ ROOT=$(dirname "$(dirname "$SELF")")
 
 # shellcheck source=../versions.env
 source "$ROOT/versions.env"
-for _lib in common setup affinity update apl fonts webview2 dpi desktop; do
+for _lib in common setup prefix affinity update apl fonts webview2 dpi desktop; do
     # shellcheck source=/dev/null
     source "$ROOT/lib/$_lib.sh"
 done
@@ -18,9 +18,13 @@ usage() {
 Usage: $AI_NAME <command> [options]
 
 Commands:
+  setup [--wine TARBALL] [--force]
+                     Build the Windows environment (Wine prefix with .NET 4.8,
+                     VC++ runtime, fonts) from Microsoft's installers; resumes
+                     an interrupted setup. --wine installs a Wine build tarball
+                     first; --force moves an existing prefix aside and rebuilds.
   setup --from-appimage PATH [--force]
-                     Create the Wine runtime and prefix from an Affinity AppImage
-                     (the Affinity inside it is not used).
+                     Legacy: copy runtime and prefix from another Affinity AppImage.
   install [--exe FILE | --msi FILE] [--force]
                      Install Affinity from the official installer (downloaded
                      unless FILE is given) plus AffinityPluginLoader/WineFix.
@@ -41,16 +45,52 @@ EOF
 }
 
 cmd_setup() {
-    local appimage="" force=0
+    local appimage="" tarball="" force=0
     while (($#)); do
         case $1 in
             --from-appimage) appimage=${2:-}; shift 2 ;;
+            --wine) tarball=${2:-}; shift 2 ;;
             --force) force=1; shift ;;
             *) die "unknown setup option: $1" ;;
         esac
     done
-    [[ -n "$appimage" ]] || die "usage: $AI_NAME setup --from-appimage PATH"
-    setup_from_appimage "$appimage" "$force"
+    if [[ -n "$appimage" ]]; then
+        setup_from_appimage "$appimage" "$force"
+        return
+    fi
+    [[ -n "$tarball" ]] && runtime_install_tarball "$tarball"
+    has_wine || die "no Wine runtime; run from the AppImage or pass --wine TARBALL"
+    if is_setup; then
+        [[ "$force" == 1 ]] || { log "already set up (use --force to rebuild)"; return 0; }
+        prefix_backup
+    fi
+    prefix_build
+}
+
+# First start without an environment: build it, install Affinity, offer a menu entry.
+first_run() {
+    if ! gui_mode && [[ ! -t 0 ]]; then
+        die "the Windows environment is not set up yet; run: $AI_NAME setup"
+    fi
+    local text="Affinity Infinity will now set up a Windows environment for Affinity:\n\n\
+• .NET Framework 4.8, Visual C++ runtime and core fonts are installed from\n\
+  Microsoft's official installers (about 15 minutes, ~1 GB download);\n\
+• then Affinity is downloaded from affinity.studio.\n\nContinue?"
+    if can_show_dialogs; then
+        zenity --question --title="Affinity Infinity" --ok-label="Set up" --width=480 --text="$text" 2>/dev/null || exit 0
+    else
+        printf '%b ' "$text"
+        local answer
+        read -r answer
+        [[ "$answer" == [yY]* ]] || exit 0
+    fi
+    prefix_build
+    install_affinity
+    if [[ -n "${APPIMAGE:-}" ]] && can_show_dialogs && ! foreign_integration >/dev/null &&
+        zenity --question --title="Affinity Infinity" --ok-label="Add" --cancel-label="No" \
+            --text="Add Affinity to the applications menu?" 2>/dev/null; then
+        install_desktop
+    fi
 }
 
 cmd_check() {
@@ -88,7 +128,11 @@ cmd_update() {
 }
 
 cmd_run() {
-    require_setup
+    has_wine || die "no Wine runtime; run from the AppImage or: $AI_NAME setup --wine TARBALL"
+    is_setup || first_run
+    wine_env
+    sync_wine_build
+    refresh_desktop
     if [[ ! -f "$AFFINITY_DIR/AffinityHook.exe" ]]; then
         if gui_mode; then
             zenity --question --title="Affinity" --ok-label="Install" \
@@ -102,7 +146,6 @@ cmd_run() {
     fi
 
     [[ -f "$AFFINITY_DIR/d3d12.dll" ]] || install_d3d12
-    wine_env
     [[ "$(state_get PREFIX_CONFIGURED)" == "$PREFIX_CONFIG_REV" ]] || prefix_configure
     apply_dpi
 
@@ -125,6 +168,8 @@ cmd_run() {
     wait "$launcher"
     rc=$?
     kill "$watchdog" 2>/dev/null
+    # Wine processes run from the AppImage's mount; let them finish before it is unmounted.
+    timeout 60 "$WINE_ROOT/bin/wineserver" -w
     return $rc
 }
 
@@ -149,7 +194,9 @@ cmd_dpi() {
 
 cmd_status() {
     local wine_version="" installed=""
-    is_setup && wine_version=$(state_get WINE_VERSION)
+    if has_wine; then
+        wine_version=$( ([[ -f "$WINE_ROOT/BUILD" ]] && head -1 "$WINE_ROOT/BUILD") || state_get WINE_VERSION)
+    fi
     installed=$(installed_version)
     cat <<EOF
 data dir:        $DATA_DIR

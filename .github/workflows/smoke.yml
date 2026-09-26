@@ -1,0 +1,68 @@
+name: Smoke test
+
+# Builds the AppImage, runs the whole first-run recipe headless (prefix with
+# .NET 4.8 etc. from Microsoft's installers, then Affinity from affinity.studio)
+# and checks the result. Nothing from the prefix is published.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * 1'
+  pull_request:
+    paths: ['bin/**', 'lib/**', 'packaging/**', 'versions.env', '.github/workflows/smoke.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      AFFINITY_INFINITY_DATA: ${{ github.workspace }}/ai-data
+      AFFINITY_INFINITY_CONFIG: ${{ github.workspace }}/ai-config
+      APPIMAGE_EXTRACT_AND_RUN: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      - name: Runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb fuse3 libvulkan1 mesa-vulkan-drivers libgnutls30t64 \
+            libfreetype6 libfontconfig1 libxkbcommon0 libxkbregistry0 libwayland-client0
+
+      - name: Fetch pinned Wine build
+        run: |
+          . packaging/tools.env
+          mkdir -p packaging/out
+          curl -fsSL --retry 3 -o packaging/out/wine.tar.xz "$WINE_TARBALL_URL"
+          echo "$WINE_TARBALL_SHA256  packaging/out/wine.tar.xz" | sha256sum -c -
+
+      - name: Build AppImage
+        run: packaging/build-appimage.sh packaging/out/wine.tar.xz smoke
+
+      - name: Set up the Windows environment
+        run: xvfb-run -a packaging/out/Affinity-Infinity-smoke-x86_64.AppImage setup
+
+      - name: Install Affinity
+        run: xvfb-run -a packaging/out/Affinity-Infinity-smoke-x86_64.AppImage install
+
+      - name: Check
+        run: |
+          app=packaging/out/Affinity-Infinity-smoke-x86_64.AppImage
+          $app status
+          dir="$AFFINITY_INFINITY_DATA/prefix/drive_c/Program Files/Affinity/Affinity"
+          for f in Affinity.exe AffinityHook.exe apl/plugins/WineFix.dll d3d12.dll d3d12core.dll d2d1.dll; do
+            test -f "$dir/$f" || { echo "missing: $f"; exit 1; }
+          done
+          grep -q '"Segoe UI (TrueType)"="segoeui.ttf"' "$AFFINITY_INFINITY_DATA/prefix/system.reg"
+          grep -q '"Arial (TrueType)"="arial.ttf"' "$AFFINITY_INFINITY_DATA/prefix/system.reg"
+
+      - name: Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: ${{ github.workspace }}/ai-data/cache/*.log

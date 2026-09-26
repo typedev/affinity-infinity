@@ -1,0 +1,59 @@
+name: AppImage
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      appimage:
+        description: File name of the built AppImage
+        value: ${{ jobs.build.outputs.appimage }}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      appimage: ${{ steps.build.outputs.appimage }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install packaging tools
+        run: sudo apt-get update && sudo apt-get install -y zsync
+
+      - name: Fetch pinned Wine build
+        run: |
+          . packaging/tools.env
+          mkdir -p packaging/out
+          curl -fsSL --retry 3 -o packaging/out/wine.tar.xz "$WINE_TARBALL_URL"
+          echo "$WINE_TARBALL_SHA256  packaging/out/wine.tar.xz" | sha256sum -c -
+
+      - name: Build AppImage
+        id: build
+        run: |
+          packaging/build-appimage.sh packaging/out/wine.tar.xz "${GITHUB_REF_NAME#v}"
+          echo "appimage=$(cd packaging/out && ls Affinity-Infinity-*.AppImage)" >>"$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: |
+            packaging/out/*.AppImage
+            packaging/out/*.zsync
+            packaging/out/*.sha256
+          retention-days: 7
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            packaging/out/*.AppImage
+            packaging/out/*.zsync
+            packaging/out/*.sha256
