@@ -9,6 +9,8 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO=$(dirname "$HERE")
 # shellcheck source=tools.env
 source "$HERE/tools.env"
+# shellcheck source=../versions.env
+source "$REPO/versions.env"
 
 WINE_TARBALL=${1:?usage: build-appimage.sh WINE_TARBALL [VERSION]}
 VERSION=${2:-$(git -C "$REPO" describe --tags --always --dirty 2>/dev/null || echo dev)}

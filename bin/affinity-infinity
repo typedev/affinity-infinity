@@ -7,7 +7,7 @@ ROOT=$(dirname "$(dirname "$SELF")")
 
 # shellcheck source=../versions.env
 source "$ROOT/versions.env"
-for _lib in common setup prefix affinity update apl fonts webview2 dpi desktop; do
+for _lib in common setup prefix affinity update selfupdate apl fonts webview2 dpi desktop; do
     # shellcheck source=/dev/null
     source "$ROOT/lib/$_lib.sh"
 done
@@ -129,6 +129,7 @@ cmd_update() {
 
 cmd_run() {
     has_wine || die "no Wine runtime; run from the AppImage or: $AI_NAME setup --wine TARBALL"
+    selfupdate_check "$@"
     is_setup || first_run
     wine_env
     sync_wine_build
