@@ -34,6 +34,14 @@ bin/affinity-infinity check        # exit 0 if a newer Affinity was published
 bin/affinity-infinity update       # install it
 ```
 
+Prefix fixes applied automatically (and once more on `run` when they change):
+
+- the regular faces of Arial, Tahoma etc. missing from the 64-bit font registry are
+  restored — without them Affinity's UI is drawn in Arial Italic;
+- Segoe UI, which Affinity's UI asks for, is provided by
+  [Selawik](https://github.com/microsoft/Selawik) (OFL), renamed locally to "Segoe UI"
+  (needs `python3`; otherwise the UI uses Tahoma).
+
 `run` also checks once a day in the background and shows a notification when an update
 is available. The menu entry has "Check for updates" and "Interface scale…" actions.
 

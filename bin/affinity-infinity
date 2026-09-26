@@ -7,7 +7,7 @@ ROOT=$(dirname "$(dirname "$SELF")")
 
 # shellcheck source=../versions.env
 source "$ROOT/versions.env"
-for _lib in common setup affinity apl dpi desktop; do
+for _lib in common setup affinity apl fonts dpi desktop; do
     # shellcheck source=/dev/null
     source "$ROOT/lib/$_lib.sh"
 done
@@ -124,7 +124,14 @@ cmd_run() {
     done
 
     cd "$AFFINITY_DIR" || die "cannot enter $AFFINITY_DIR"
-    exec "$WINE_ROOT/bin/wine" "$AFFINITY_WIN_DIR\\AffinityHook.exe" "${args[@]}"
+    "$WINE_ROOT/bin/wine" "$AFFINITY_WIN_DIR\\AffinityHook.exe" "${args[@]}" &
+    local launcher=$! rc watchdog
+    exit_watchdog "$launcher" &
+    watchdog=$!
+    wait "$launcher"
+    rc=$?
+    kill "$watchdog" 2>/dev/null
+    return $rc
 }
 
 cmd_dpi() {

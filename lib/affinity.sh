@@ -243,8 +243,62 @@ prune_cache() {
     done
 }
 
+# Affinity sometimes hangs after its last window is closed (its settings are
+# already saved by then) and stays resident with gigabytes of memory. While it
+# runs, watch its X11 windows; once they have been gone for EXIT_GRACE seconds
+# and the process is idle, end the prefix's Wine session. The idle check keeps
+# it from firing during startup, between the splash screen and the main window.
+EXIT_GRACE=20
+EXIT_POLL=2
+
+affinity_pid() {
+    pgrep -f '^C:\\Program Files\\Affinity\\Affinity\\Affinity\.exe' | head -1
+}
+
+affinity_has_windows() {
+    local id
+    for id in $(xprop -root _NET_CLIENT_LIST 2>/dev/null | grep -oE '0x[0-9a-f]+'); do
+        xprop -id "$id" WM_CLASS 2>/dev/null | grep -qi '"affinity\.exe"' && return 0
+    done
+    return 1
+}
+
+# CPU time (clock ticks) used by a process so far.
+cpu_ticks() {
+    sed 's/^.*) //' "/proc/$1/stat" 2>/dev/null | awk '{print $12 + $13}'
+}
+
+exit_watchdog() {
+    local launcher=$1 seen=0 gone=0 pid ticks0=0 ticks
+    [[ -n "${DISPLAY:-}" ]] && command -v xprop >/dev/null || return 0
+    local idle_ticks=$((EXIT_GRACE * $(getconf CLK_TCK) / 10)) # 10 % of one core
+
+    while kill -0 "$launcher" 2>/dev/null; do
+        sleep "$EXIT_POLL"
+        if affinity_has_windows; then
+            seen=1 gone=0
+            continue
+        fi
+        ((seen)) || continue
+        pid=$(affinity_pid)
+        [[ -n "$pid" ]] || return 0
+        if ((gone == 0)); then
+            ticks0=$(cpu_ticks "$pid")
+        fi
+        gone=$((gone + EXIT_POLL))
+        ((gone >= EXIT_GRACE)) || continue
+        ticks=$(cpu_ticks "$pid")
+        if ((ticks - ticks0 < idle_ticks)); then
+            log "Affinity closed its windows but did not exit; ending its Wine session"
+            wineserver -k
+            return 0
+        fi
+        gone=0 # still busy: start a new grace period
+    done
+}
+
 # Bump when prefix_configure changes, so existing prefixes get reconfigured on next run.
-PREFIX_CONFIG_REV=2
+PREFIX_CONFIG_REV=5
 
 # Per-application Wine settings for Affinity, independent of the Affinity version.
 prefix_configure() {
@@ -258,30 +312,6 @@ REGEDIT4
 "d2d1"="native,builtin"
 EOF
     fix_font_registry
+    install_segoe_ui
     state_set PREFIX_CONFIGURED "$PREFIX_CONFIG_REV"
-}
-
-# The seeded prefix's 64-bit font lists lack the regular faces of Arial, Times
-# New Roman, Courier New and all of Tahoma, although the files are in
-# windows/Fonts and the 32-bit (Wow6432Node) list has them. Affinity's
-# DWriteCore builds its font collection from these lists, so its Segoe UI ->
-# Tahoma -> Arial fallback ended at Arial Italic: the whole UI in italics.
-# Copy the complete 32-bit list into both 64-bit keys.
-fix_font_registry() {
-    local wow='[Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Fonts]'
-    local entries
-    entries=$(K=$wow awk '
-        index($0, ENVIRON["K"]) == 1 { f = 1; next }
-        f && /^\[/ { exit }
-        f && /^"[^"]+"="[^"]+"$/ { print }' "$PREFIX_DIR/system.reg")
-    [[ -n "$entries" ]] || { warn "no 32-bit font list found; font registry left unchanged"; return 0; }
-    reg_import <<EOF || warn "failed to update the font registry"
-REGEDIT4
-
-[HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts]
-$entries
-
-[HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Fonts]
-$entries
-EOF
 }
