@@ -24,12 +24,26 @@ installed_version() {
     [[ -f "$AFFINITY_DIR/Affinity.exe" ]] && pe_file_version "$AFFINITY_DIR/Affinity.exe"
 }
 
+# Start downloading the installer in the background, so it overlaps with the
+# prefix setup on the first run. It writes only the .part file (no state);
+# download_installer waits for it and takes over.
+prefetch_installer() {
+    remote_info || return 0
+    mkdir -p "$CACHE_DIR"
+    [[ "$(state_get PARTIAL_ETAG)" == "$REMOTE_ETAG" ]] || rm -f "$INSTALLER_EXE.part"
+    state_set PARTIAL_ETAG "$REMOTE_ETAG"
+    curl -sfL -C - --retry 3 -o "$INSTALLER_EXE.part" "$AFFINITY_URL" >/dev/null 2>&1 &
+    PREFETCH_PID=$!
+}
+
+file_size() { stat -c %s "$1" 2>/dev/null || echo 0; }
+
 download_installer() {
     remote_info || die "could not reach $AFFINITY_URL"
     mkdir -p "$CACHE_DIR"
 
     if [[ -f "$INSTALLER_EXE" && "$(state_get CACHED_ETAG)" == "$REMOTE_ETAG" &&
-        "$(stat -c %s "$INSTALLER_EXE")" == "$REMOTE_SIZE" ]]; then
+        "$(file_size "$INSTALLER_EXE")" == "$REMOTE_SIZE" ]]; then
         log "using cached installer"
         return 0
     fi
@@ -37,20 +51,38 @@ download_installer() {
     local part="$INSTALLER_EXE.part"
     # A partial download of a different release cannot be resumed.
     if [[ "$(state_get PARTIAL_ETAG)" != "$REMOTE_ETAG" ]]; then
+        [[ -n "${PREFETCH_PID:-}" ]] && kill "$PREFETCH_PID" 2>/dev/null
         rm -f "$part"
     fi
     state_set PARTIAL_ETAG "$REMOTE_ETAG"
 
-    log "downloading installer ($((REMOTE_SIZE / 1024 / 1024)) MB)..."
-    if gui_mode; then
-        curl -fL -C - --retry 3 -# -o "$part" "$AFFINITY_URL" 2>&1 |
-            stdbuf -oL tr '\r' '\n' | grep --line-buffered -oE '[0-9]+(\.[0-9]+)?%' | stdbuf -oL sed 's/\..*//; s/%//' |
-            zenity --progress --auto-close --title="Affinity" --text="Downloading Affinity..." 2>/dev/null
-    else
-        curl -fL -C - --retry 3 --progress-bar -o "$part" "$AFFINITY_URL"
+    progress_phase affinity-download "Downloading Affinity ($((REMOTE_SIZE / 1024 / 1024)) MB)..."
+    if [[ -n "${PREFETCH_PID:-}" ]]; then
+        while kill -0 "$PREFETCH_PID" 2>/dev/null; do
+            progress_pct $(($(file_size "$part") * 100 / REMOTE_SIZE))
+            sleep 1
+        done
+        PREFETCH_PID=""
+    fi
+    if [[ "$(file_size "$part")" != "$REMOTE_SIZE" ]]; then
+        if progress_active; then
+            curl -sfL -C - --retry 3 -o "$part" "$AFFINITY_URL" &
+            local pid=$!
+            while kill -0 "$pid" 2>/dev/null; do
+                progress_pct $(($(file_size "$part") * 100 / REMOTE_SIZE))
+                sleep 1
+            done
+            wait "$pid"
+        elif gui_mode; then
+            curl -fL -C - --retry 3 -# -o "$part" "$AFFINITY_URL" 2>&1 |
+                stdbuf -oL tr '\r' '\n' | grep --line-buffered -oE '[0-9]+(\.[0-9]+)?%' | stdbuf -oL sed 's/\..*//; s/%//' |
+                zenity --progress --auto-close --title="Affinity" --text="Downloading Affinity..." 2>/dev/null
+        else
+            curl -fL -C - --retry 3 --progress-bar -o "$part" "$AFFINITY_URL"
+        fi
     fi
 
-    [[ -f "$part" && "$(stat -c %s "$part")" == "$REMOTE_SIZE" ]] ||
+    [[ "$(file_size "$part")" == "$REMOTE_SIZE" ]] ||
         die "download incomplete; run the command again to resume"
     mv "$part" "$INSTALLER_EXE"
     state_set CACHED_ETAG "$REMOTE_ETAG"
@@ -194,6 +226,7 @@ install_affinity() {
 
     local before
     before=$(installed_version)
+    progress_phase affinity-install "Installing Affinity..." 3
     msi_install "$msi"
     install_d3d12
     version=$(installed_version)
@@ -201,6 +234,7 @@ install_affinity() {
 
     state_set INSTALLED_VERSION "$version"
     state_set INSTALLED_ETAG "$etag"
+    progress_phase finish "Adding AffinityPluginLoader and WineFix..." 1
     apl_install
     prefix_configure
     prune_cache "$version"

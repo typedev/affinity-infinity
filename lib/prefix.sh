@@ -15,6 +15,8 @@ declare -A PREFIX_STEP_TITLE=(
     [settings]="Configuring Windows 11 mode and Vulkan rendering"
 )
 declare -A PREFIX_STEP_TIMEOUT=([init]=600 [vcrun2022]=900 [dotnet48]=3600 [fonts]=900 [settings]=300)
+# Seconds per percent the progress bar creeps during a step (steps report no progress).
+declare -A PREFIX_STEP_CREEP=([init]=2 [vcrun2022]=4 [dotnet48]=12 [fonts]=4 [settings]=2)
 
 prefix_tools_env() {
     export PATH="$TOOLS_DIR/bin:$PATH"
@@ -41,7 +43,7 @@ prefix_run_step() {
     local step=$1 n=$2 total=$3 logfile="$CACHE_DIR/prefix-$1.log" attempt rc
     local -a cmd
     mapfile -t cmd < <(prefix_step_cmd "$step")
-    log "[$n/$total] ${PREFIX_STEP_TITLE[$step]}..."
+    progress_phase "prefix-$step" "Step $n/$total: ${PREFIX_STEP_TITLE[$step]}..." "${PREFIX_STEP_CREEP[$step]}"
     for attempt in 1 2; do
         # No Wine Mono/Gecko prompts: .NET and Edge are not the builtin replacements here.
         WINEDLLOVERRIDES="mscoree,mshtml=;$WINEDLLOVERRIDES" \
@@ -78,6 +80,7 @@ prefix_build() {
 
     state_set WINE_VERSION "$(wine_build_id)"
     state_set PREFIX_CONFIGURED ""
+    progress_phase prefix-configure "Applying font and display fixes..." 2
     prefix_configure
     state_set PREFIX_READY 1
     log "Windows environment ready in $PREFIX_DIR"

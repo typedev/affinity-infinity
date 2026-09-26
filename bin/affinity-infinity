@@ -67,30 +67,41 @@ cmd_setup() {
     prefix_build
 }
 
-# First start without an environment: build it, install Affinity, offer a menu entry.
+# First start without an environment: one question, then one progress window
+# for building the prefix, installing Affinity (its download overlaps with the
+# prefix setup) and adding the menu entry.
 first_run() {
     if ! gui_mode && [[ ! -t 0 ]]; then
         die "the Windows environment is not set up yet; run: $AI_NAME setup"
     fi
-    local text="Affinity Infinity will now set up a Windows environment for Affinity:\n\n\
-• .NET Framework 4.8, Visual C++ runtime and core fonts are installed from\n\
-  Microsoft's official installers (about 15 minutes, ~1 GB download);\n\
-• then Affinity is downloaded from affinity.studio.\n\nContinue?"
-    if can_show_dialogs; then
-        zenity --question --title="Affinity Infinity" --ok-label="Set up" --width=480 --text="$text" 2>/dev/null || exit 0
+    local text="Affinity Infinity will set up Affinity by Canva:\n\n\
+• a Windows environment with .NET Framework 4.8, Visual C++ runtime and core\n\
+  fonts, from Microsoft's official installers;\n\
+• Affinity itself, from affinity.studio.\n\n\
+This takes about 15 minutes and downloads about 1.7 GB, once."
+    if can_show_dialogs && gui_mode; then
+        zenity --question --title="Affinity Infinity" --ok-label="Install" --cancel-label="Cancel" \
+            --width=500 --text="$text" 2>/dev/null || exit 0
     else
-        printf '%b ' "$text"
+        printf '%b\nContinue? [y/N] ' "$text"
         local answer
         read -r answer
         [[ "$answer" == [yY]* ]] || exit 0
     fi
+
+    # PROGRESS_PLAN is an associative array declared in lib/common.sh.
+    # shellcheck disable=SC2034,SC2154
+    PROGRESS_PLAN=(
+        [prefix-init]="0 3" [prefix-vcrun2022]="3 12" [prefix-dotnet48]="12 60"
+        [prefix-fonts]="60 70" [prefix-settings]="70 73" [prefix-configure]="73 75"
+        [affinity-download]="75 85" [affinity-install]="85 96" [finish]="96 100"
+    )
+    progress_begin "Installing Affinity"
+    prefetch_installer
     prefix_build
-    install_affinity
-    if [[ -n "${APPIMAGE:-}" ]] && can_show_dialogs && ! foreign_integration >/dev/null &&
-        zenity --question --title="Affinity Infinity" --ok-label="Add" --cancel-label="No" \
-            --text="Add Affinity to the applications menu?" 2>/dev/null; then
-        install_desktop
-    fi
+    install_affinity --force
+    foreign_integration >/dev/null || install_desktop
+    progress_end
 }
 
 cmd_check() {

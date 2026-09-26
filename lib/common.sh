@@ -34,16 +34,100 @@ warn() { printf '%s: warning: %s\n' "$AI_NAME" "$*" >&2; }
 
 die() {
     printf '%s: error: %s\n' "$AI_NAME" "$*" >&2
+    progress_end
     if gui_mode; then
         zenity --error --title="Affinity" --text="$*" 2>/dev/null || true
     fi
     exit 1
 }
 
+# ---------------------------------------------------------------- progress
+# One progress window for long multi-step work (the first run). While it is
+# open, phases, downloads and with_spinner report into it instead of opening
+# windows of their own. PROGRESS_PLAN maps phase names to "from to" percent.
+
+PROGRESS_FD=""
+PROGRESS_PID=""
+PROGRESS_TICKER=""
+PROGRESS_LO=0
+PROGRESS_HI=0
+declare -A PROGRESS_PLAN=()
+
+progress_active() { [[ -n "$PROGRESS_FD" ]]; }
+
+progress_begin() {
+    local title=$1 fifo
+    gui_mode || return 0
+    mkdir -p "$CACHE_DIR"
+    fifo=$(mktemp -u "$CACHE_DIR/progress.XXXXXX")
+    mkfifo "$fifo"
+    zenity --progress --title="$title" --text="$title" --percentage=0 --auto-close --no-cancel \
+        --width=480 <"$fifo" 2>/dev/null &
+    PROGRESS_PID=$!
+    exec {PROGRESS_FD}>"$fifo"
+    rm -f "$fifo"
+    trap '' PIPE # the window may be closed by the user; keep going
+}
+
+_progress_write() {
+    progress_active || return 0
+    { printf '%s\n' "$@" >&"$PROGRESS_FD"; } 2>/dev/null
+    return 0
+}
+
+_progress_ticker_stop() {
+    [[ -n "$PROGRESS_TICKER" ]] && kill "$PROGRESS_TICKER" 2>/dev/null
+    PROGRESS_TICKER=""
+}
+
+# progress_phase <name> <text> [creep]: enter a phase of PROGRESS_PLAN. With
+# creep, the bar advances slowly on its own within the phase (for steps that
+# report no progress), never reaching its end.
+progress_phase() {
+    local name=$1 text=$2 creep=${3:-}
+    log "$text"
+    progress_active || return 0
+    _progress_ticker_stop
+    read -r PROGRESS_LO PROGRESS_HI <<<"${PROGRESS_PLAN[$name]:-$PROGRESS_LO $PROGRESS_LO}"
+    _progress_write "$PROGRESS_LO" "# $text"
+    if [[ -n "$creep" ]] && ((PROGRESS_HI - PROGRESS_LO > 1)); then
+        (
+            p=$PROGRESS_LO
+            while ((p < PROGRESS_HI - 1)); do
+                sleep "$creep"
+                p=$((p + 1))
+                _progress_write "$p"
+            done
+        ) &
+        PROGRESS_TICKER=$!
+    fi
+}
+
+# progress_pct <0-100>: position within the current phase.
+progress_pct() {
+    progress_active || return 0
+    _progress_write "$((PROGRESS_LO + (PROGRESS_HI - PROGRESS_LO) * $1 / 100))"
+}
+
+progress_end() {
+    progress_active || return 0
+    _progress_ticker_stop
+    _progress_write 100
+    exec {PROGRESS_FD}>&-
+    PROGRESS_FD=""
+    wait "$PROGRESS_PID" 2>/dev/null
+    trap - PIPE
+}
+
 # with_spinner <text> <cmd...>: run cmd; in GUI mode show a pulsating progress dialog meanwhile.
 with_spinner() {
     local text=$1
     shift
+    if progress_active; then
+        _progress_write "# $text"
+        "$@"
+        return
+    fi
     gui_mode || { "$@"; return; }
     "$@" &
     local pid=$! rc

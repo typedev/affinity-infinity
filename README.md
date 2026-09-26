@@ -21,11 +21,20 @@ Nothing from Microsoft or Canva is redistributed:
 
 Not affiliated with Canva. Affinity is a trademark of Canva.
 
-## AppImage
+## Install
 
-Download `Affinity-Infinity-<version>-x86_64.AppImage`, make it executable and start it.
-The first start sets up the environment, installs Affinity and offers a menu entry
-(with icon and `.af*` file associations). Needs `fuse3` (preinstalled on desktop
+```sh
+curl -fsSL https://raw.githubusercontent.com/typedev/affinity-infinity/main/install.sh | bash
+```
+
+This puts the latest AppImage into `~/Applications`, adds **Affinity** to the
+applications menu (with icon and `.af*` file associations) and starts the setup: one
+question, then one progress window while the Windows environment is built and Affinity
+is downloaded (in parallel) and installed; Affinity opens when it is done. Remove it with
+`... | bash -s -- --uninstall` (asks before deleting Affinity's data).
+
+Or download `Affinity-Infinity-<version>-x86_64.AppImage` from the releases yourself,
+make it executable and start it: the first start does the same. Needs `fuse3` (preinstalled on desktop
 Ubuntu/Fedora; no `libfuse2`), `zenity` for dialogs and optionally `python3`
 (Segoe UI substitute). Commands work on the AppImage too, e.g.
 `./Affinity-Infinity-*.AppImage status` or `... dpi 192`.
