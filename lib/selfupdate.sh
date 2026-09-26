@@ -16,8 +16,8 @@ latest_release() {
         -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$AI_REPO/releases/latest") || return 1
     REL_TAG=$(sed -n 's/^  "tag_name": "\(.*\)",$/\1/p' <<<"$json" | head -1)
     REL_PAGE=$(sed -n 's/^  "html_url": "\(.*\)",$/\1/p' <<<"$json" | head -1)
-    REL_APPIMAGE_URL=$(grep -o '"browser_download_url": "[^"]*x86_64\.AppImage"' <<<"$json" | head -1 | cut -d'"' -f4)
-    REL_SHA256_URL=$(grep -o '"browser_download_url": "[^"]*x86_64\.AppImage\.sha256"' <<<"$json" | head -1 | cut -d'"' -f4)
+    REL_APPIMAGE_URL=$(grep -o '"browser_download_url": "[^"]*/Affinity-Infinity-[^"/]*-x86_64\.AppImage"' <<<"$json" | head -1 | cut -d'"' -f4)
+    REL_SHA256_URL=$(grep -o '"browser_download_url": "[^"]*/Affinity-Infinity-[^"/]*-x86_64\.AppImage\.sha256"' <<<"$json" | head -1 | cut -d'"' -f4)
     [[ -n "$REL_TAG" && -n "$REL_APPIMAGE_URL" && -n "$REL_SHA256_URL" ]]
 }
 

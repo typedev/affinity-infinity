@@ -44,9 +44,9 @@ jobs:
         with:
           name: appimage
           path: |
-            packaging/out/*.AppImage
-            packaging/out/*.zsync
-            packaging/out/*.sha256
+            packaging/out/Affinity-Infinity-*.AppImage
+            packaging/out/Affinity-Infinity-*.zsync
+            packaging/out/Affinity-Infinity-*.sha256
           retention-days: 7
 
       - name: Publish release
@@ -54,6 +54,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            packaging/out/*.AppImage
-            packaging/out/*.zsync
-            packaging/out/*.sha256
+            packaging/out/Affinity-Infinity-*.AppImage
+            packaging/out/Affinity-Infinity-*.zsync
+            packaging/out/Affinity-Infinity-*.sha256
