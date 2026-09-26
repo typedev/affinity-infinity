@@ -108,6 +108,7 @@ cmd_run() {
 
     [[ -f "$AFFINITY_DIR/d3d12.dll" ]] || install_d3d12
     wine_env
+    [[ "$(state_get PREFIX_CONFIGURED)" == "$PREFIX_CONFIG_REV" ]] || prefix_configure
     apply_dpi
     background_update_check
 

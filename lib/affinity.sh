@@ -243,9 +243,12 @@ prune_cache() {
     done
 }
 
+# Bump when prefix_configure changes, so existing prefixes get reconfigured on next run.
+PREFIX_CONFIG_REV=2
+
 # Per-application Wine settings for Affinity, independent of the Affinity version.
 prefix_configure() {
-    reg_import <<'EOF'
+    reg_import <<'EOF' || die "failed to configure the Wine prefix"
 REGEDIT4
 
 [HKEY_CURRENT_USER\Software\Wine\AppDefaults\Affinity.exe]
@@ -253,5 +256,32 @@ REGEDIT4
 
 [HKEY_CURRENT_USER\Software\Wine\AppDefaults\Affinity.exe\DllOverrides]
 "d2d1"="native,builtin"
+EOF
+    fix_font_registry
+    state_set PREFIX_CONFIGURED "$PREFIX_CONFIG_REV"
+}
+
+# The seeded prefix's 64-bit font lists lack the regular faces of Arial, Times
+# New Roman, Courier New and all of Tahoma, although the files are in
+# windows/Fonts and the 32-bit (Wow6432Node) list has them. Affinity's
+# DWriteCore builds its font collection from these lists, so its Segoe UI ->
+# Tahoma -> Arial fallback ended at Arial Italic: the whole UI in italics.
+# Copy the complete 32-bit list into both 64-bit keys.
+fix_font_registry() {
+    local wow='[Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Fonts]'
+    local entries
+    entries=$(K=$wow awk '
+        index($0, ENVIRON["K"]) == 1 { f = 1; next }
+        f && /^\[/ { exit }
+        f && /^"[^"]+"="[^"]+"$/ { print }' "$PREFIX_DIR/system.reg")
+    [[ -n "$entries" ]] || { warn "no 32-bit font list found; font registry left unchanged"; return 0; }
+    reg_import <<EOF || warn "failed to update the font registry"
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts]
+$entries
+
+[HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Fonts]
+$entries
 EOF
 }
