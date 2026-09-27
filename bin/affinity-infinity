@@ -157,7 +157,7 @@ cmd_run() {
         startup_update_check
     fi
 
-    [[ -f "$AFFINITY_DIR/d3d12.dll" ]] || install_d3d12
+    d3d12_outdated && install_d3d12
     [[ "$(state_get PREFIX_CONFIGURED)" == "$PREFIX_CONFIG_REV" ]] || prefix_configure
     apply_dpi
 

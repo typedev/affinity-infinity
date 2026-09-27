@@ -20,8 +20,22 @@ foreign_integration() {
     return 1
 }
 
+# Print the icon name for the menu entry: Affinity's own icon, extracted from
+# the installed Affinity.exe on this machine (never shipped by us), unless
+# ICON=own is configured or it cannot be extracted; else ours.
+desktop_icon() {
+    local icons=$1 png="$1/256x256/apps/$AI_NAME-app.png"
+    if [[ "$(config_get ICON affinity)" != own && -f "$AFFINITY_DIR/Affinity.exe" ]] &&
+        command -v python3 >/dev/null && mkdir -p "$(dirname "$png")" &&
+        python3 "$ROOT/lib/extract-icon.py" "$AFFINITY_DIR/Affinity.exe" "$png" 2>/dev/null; then
+        echo "$AI_NAME-app"
+    else
+        echo "$ICON_NAME"
+    fi
+}
+
 install_desktop() {
-    local data="${XDG_DATA_HOME:-$HOME/.local/share}" exe foreign
+    local data="${XDG_DATA_HOME:-$HOME/.local/share}" exe foreign icon
     local mime="$data/mime" icons="$data/icons/hicolor"
     if foreign=$(foreign_integration); then
         log "already in the menu via $(basename "$foreign"); not adding another entry"
@@ -31,6 +45,7 @@ install_desktop() {
 
     mkdir -p "$APPS_DIR" "$mime/packages" "$icons/scalable/apps"
     cp -f "$ROOT/share/$AI_NAME.svg" "$icons/scalable/apps/$ICON_NAME.svg"
+    icon=$(desktop_icon "$icons")
 
     cat >"$APPS_DIR/$DESKTOP_ID" <<EOF
 [Desktop Entry]
@@ -38,7 +53,7 @@ Type=Application
 Name=Affinity
 GenericName=Graphic Design
 Comment=Affinity by Canva on Wine, managed by Affinity Infinity
-Icon=$ICON_NAME
+Icon=$icon
 TryExec=$exe
 Exec="$exe" run %F
 Terminal=false

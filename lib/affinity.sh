@@ -141,6 +141,16 @@ msi_install() {
 # The prefix overrides d3d12/d3d12core to "native" only, so the DLLs must sit
 # next to Affinity.exe; without them Affinity's renderer libraries fail to load
 # and Affinity.exe balloons until the OOM killer stops it.
+# True if the DLLs next to Affinity.exe differ from the Wine build's (e.g. after
+# an AppImage update brought a newer vkd3d-proton).
+d3d12_outdated() {
+    local src="$WINE_ROOT/lib/wine/vkd3d-proton/x86_64-windows" f
+    for f in d3d12.dll d3d12core.dll; do
+        cmp -s "$src/$f" "$AFFINITY_DIR/$f" || return 0
+    done
+    return 1
+}
+
 install_d3d12() {
     local src="$WINE_ROOT/lib/wine/vkd3d-proton/x86_64-windows" f
     for f in d3d12.dll d3d12core.dll; do
@@ -236,6 +246,8 @@ install_affinity() {
     state_set INSTALLED_ETAG "$etag"
     progress_phase finish "Adding AffinityPluginLoader and WineFix..." 1
     apl_install
+    # The menu entry shows the icon of the installed Affinity; refresh it.
+    [[ -f "$APPS_DIR/$DESKTOP_ID" ]] && install_desktop >/dev/null 2>&1
     prefix_configure
     prune_cache "$version"
 }

@@ -86,7 +86,11 @@ install() {
     "$APP" desktop
 
     if [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
-        say "Starting the setup: follow the window that opens (about 15 minutes, once)"
+        if [[ -f "$DATA_DIR/prefix/system.reg" ]]; then
+            say "Starting Affinity"
+        else
+            say "Starting the setup: follow the window that opens (about 15 minutes, once)"
+        fi
         setsid "$APP" </dev/null >/dev/null 2>&1 &
     else
         say "Done. Start Affinity from the applications menu, or run: $APP"
