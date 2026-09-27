@@ -34,55 +34,30 @@ $entries
 EOF
 }
 
-# Segoe UI is not redistributable. Selawik is Microsoft's metric-compatible open
-# (OFL) substitute; it is renamed to "Segoe UI" here, on the user's machine, and
-# installed under the standard Windows file names (which the prefix's FontLink
-# entries already reference). Without it the UI falls back to Tahoma.
-install_segoe_ui() {
-    local fonts="$PREFIX_DIR/drive_c/windows/Fonts" marker="selawik-$SELAWIK_VERSION"
-    [[ "$(state_get SEGOE_UI)" == "$marker" ]] && return 0
-    if [[ -f "$fonts/segoeui.ttf" && -z "$(state_get SEGOE_UI)" ]]; then
-        log "a Segoe UI is already installed in the prefix; leaving it alone"
-        return 0
+# Segoe UI is not redistributable, so Affinity's requests for it go to Tahoma
+# (the font Wine's UI uses anyway); the substitute makes that explicit for GDI.
+# Earlier versions installed Selawik renamed to "Segoe UI": remove those files.
+# A real Segoe UI copied into the prefix by the user is used as is.
+segoe_ui_substitute() {
+    local fonts="$PREFIX_DIR/drive_c/windows/Fonts" f value='"Segoe UI"="Tahoma"'
+    if [[ "$(state_get SEGOE_UI)" == selawik-* ]]; then
+        for f in segoeui.ttf segoeuib.ttf segoeuil.ttf seguisb.ttf segoeuisl.ttf; do
+            rm -f "${fonts:?}/$f"
+        done
+        register_fonts <<'EOF' || warn "failed to unregister the old Segoe UI substitute"
+"Segoe UI (TrueType)"=-
+"Segoe UI Bold (TrueType)"=-
+"Segoe UI Light (TrueType)"=-
+"Segoe UI Semibold (TrueType)"=-
+"Segoe UI Semilight (TrueType)"=-
+EOF
+        state_set SEGOE_UI ""
     fi
-    command -v python3 >/dev/null || { warn "python3 not found; skipping Segoe UI substitute (UI will use Tahoma)"; return 0; }
+    [[ -f "$fonts/segoeui.ttf" ]] && value='"Segoe UI"=-'
+    reg_import <<EOF || warn "failed to set the Segoe UI substitute"
+REGEDIT4
 
-    local archive="$CACHE_DIR/Selawik-$SELAWIK_VERSION.zip"
-    if [[ ! -f "$archive" ]] || ! sha256sum --status -c <<<"$SELAWIK_SHA256  $archive"; then
-        log "downloading Selawik $SELAWIK_VERSION..."
-        curl -fsSL --retry 3 -o "$archive.part" "$SELAWIK_URL" || { warn "failed to download Selawik"; return 0; }
-        sha256sum --status -c <<<"$SELAWIK_SHA256  $archive.part" || {
-            rm -f "$archive.part"
-            warn "checksum mismatch for Selawik $SELAWIK_VERSION"
-            return 0
-        }
-        mv "$archive.part" "$archive"
-    fi
-
-    # Selawik file -> Segoe UI file, registry name.
-    local -a map=(
-        "selawk.ttf segoeui.ttf Segoe UI"
-        "selawkb.ttf segoeuib.ttf Segoe UI Bold"
-        "selawkl.ttf segoeuil.ttf Segoe UI Light"
-        "selawksb.ttf seguisb.ttf Segoe UI Semibold"
-        "selawksl.ttf segoeuisl.ttf Segoe UI Semilight"
-    )
-    local tmp entry src dst name entries=""
-    tmp=$(mktemp -d "$CACHE_DIR/selawik.XXXXXX")
-    for entry in "${map[@]}"; do
-        read -r src dst name <<<"$entry"
-        if ! python3 -c 'import sys, zipfile; open(sys.argv[3], "wb").write(zipfile.ZipFile(sys.argv[1]).read(sys.argv[2]))' \
-            "$archive" "$src" "$tmp/$src" ||
-            ! python3 "$ROOT/lib/rename-font.py" "$tmp/$src" "$fonts/$dst" Selawik "Segoe UI"; then
-            rm -rf "$tmp"
-            warn "failed to build $dst from Selawik"
-            return 0
-        fi
-        entries+="\"$name (TrueType)\"=\"$dst\""$'\n'
-    done
-    rm -rf "$tmp"
-
-    register_fonts <<<"$entries" || { warn "failed to register Segoe UI"; return 0; }
-    state_set SEGOE_UI "$marker"
-    log "installed Selawik $SELAWIK_VERSION as Segoe UI"
+[HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\FontSubstitutes]
+$value
+EOF
 }

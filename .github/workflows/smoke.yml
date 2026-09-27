@@ -60,7 +60,7 @@ jobs:
           for f in Affinity.exe AffinityHook.exe apl/plugins/WineFix.dll apl/plugins/FontSync.dll d3d12.dll d3d12core.dll d2d1.dll; do
             test -f "$dir/$f" || { echo "missing: $f"; exit 1; }
           done
-          grep -q '"Segoe UI (TrueType)"="segoeui.ttf"' "$AFFINITY_INFINITY_DATA/prefix/system.reg"
+          grep -q '"Segoe UI"="Tahoma"' "$AFFINITY_INFINITY_DATA/prefix/system.reg"
           grep -q '"Arial (TrueType)"="arial.ttf"' "$AFFINITY_INFINITY_DATA/prefix/system.reg"
 
       - name: Logs

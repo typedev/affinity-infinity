@@ -59,7 +59,7 @@ install() {
         die "FUSE is missing; install it first: 'sudo apt install fuse3' (Ubuntu/Debian) or 'sudo dnf install fuse3' (Fedora)"
     fi
     command -v zenity >/dev/null || note "zenity is not installed: setup dialogs will not be shown (sudo apt/dnf install zenity)"
-    command -v python3 >/dev/null || note "python3 is not installed: the Segoe UI font substitute will be skipped"
+    command -v python3 >/dev/null || note "python3 is not installed: the font manager and Affinity's menu icon need it"
 
     say "Looking up the latest release"
     local json url sums_url tag expected
