@@ -37,6 +37,7 @@ Commands:
                      (AUTO_UPDATE_CHECK=0 in the config turns this off).
   dpi [auto|N|--gui] Show or set the interface scale (96..480, auto = from desktop).
   desktop            Install a menu entry and file associations.
+  fonts --gui        Open the Affinity Fonts window.
   fonts [list [--tsv]]
                      Show the font library: fonts enabled for Affinity in
                      addition to the system ones.

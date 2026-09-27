@@ -311,10 +311,26 @@ fonts_summary() {
     [[ -s "$FONTS_SYSTEM_OFF" ]] && printf ', %s system fonts disabled' "$(grep -c . "$FONTS_SYSTEM_OFF")"
 }
 
+# The Affinity Fonts window (lib/fonts-gui.py), a GTK front end to these commands.
+fonts_gui() {
+    local check='import gi
+gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1")
+from gi.repository import Gtk, Adw
+assert (Gtk.get_major_version(), Gtk.get_minor_version()) >= (4, 12)
+assert (Adw.get_major_version(), Adw.get_minor_version()) >= (1, 4)'
+    python3 -c "$check" 2>/dev/null ||
+        die "Affinity Fonts needs Python bindings for GTK 4.12+ and libadwaita 1.4+ (Debian/Ubuntu: sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1)"
+    AI_CLI=$(launcher_path)
+    export AI_CLI AI_FONTS_DIR="$FONTS_DIR" AI_CONFIG_DIR="$CONFIG_DIR" AI_WINDOWS_FONTS="$WINDOWS_FONTS"
+    exec python3 "$ROOT/lib/fonts-gui.py"
+}
+
 cmd_fonts() {
     local sub=${1:-list}
     (($#)) && shift
     need_cmd python3
+    # The window runs fonts commands itself; it must not hold the lock.
+    [[ "$sub" == --gui ]] && fonts_gui
     fonts_lock
     case $sub in
         list) fonts_list "$@" ;;
