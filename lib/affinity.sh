@@ -197,22 +197,33 @@ affinity_running() {
 # documents), wait until it and its Wine session are gone, start it again.
 # The FontSync plugin performs the close and answers in the control file.
 cmd_restart() {
-    local answer="" waited=0
+    local answer="" waited=0 gone=0 windows=0
+    [[ -n "${DISPLAY:-}" ]] && command -v xprop >/dev/null && windows=1
     if affinity_running; then
         mkdir -p "$FONTS_DIR"
         echo close >"$FONTS_CONTROL"
         log "asking Affinity to close..."
+        wine_env
         while affinity_running; do
             answer=$(cat "$FONTS_CONTROL" 2>/dev/null)
             [[ "$answer" == cancelled ]] && die "Affinity was kept open; not restarted"
             if [[ "$answer" == close ]] && ((waited >= 15)); then
                 die "Affinity did not respond (font manager plugin not loaded?); close it yourself"
             fi
+            # Affinity hangs once its windows are gone (see exit_watchdog); as the
+            # close was requested, end its Wine session without the watchdog's grace.
+            if [[ "$answer" != close ]] && ((windows)) && ! affinity_has_windows; then
+                if ((++gone >= 3)); then
+                    wineserver -k
+                    break
+                fi
+            else
+                gone=0
+            fi
             sleep 1
             waited=$((waited + 1))
         done
         # The launcher that started it ends after its Wine session.
-        wine_env
         timeout 120 "$WINE_ROOT/bin/wineserver" -w
     fi
     log "starting Affinity"

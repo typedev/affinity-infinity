@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 
 import gi
@@ -73,6 +74,23 @@ def affinity_running() -> bool:
             continue
         if arg0 == AFFINITY_EXE:
             return True
+    return False
+
+
+def affinity_window() -> bool:
+    """True once Affinity shows a window (X11 class affinity.exe, as Wine sets it)."""
+    if not os.environ.get("DISPLAY"):
+        return affinity_running()
+    try:
+        clients = subprocess.run(["xprop", "-root", "_NET_CLIENT_LIST"], capture_output=True,
+                                 text=True, timeout=5).stdout
+        for wid in clients.split("#", 1)[-1].replace(",", " ").split():
+            cls = subprocess.run(["xprop", "-id", wid, "WM_CLASS"], capture_output=True,
+                                 text=True, timeout=5).stdout
+            if '"affinity.exe"' in cls.lower():
+                return True
+    except (OSError, subprocess.SubprocessError):
+        return affinity_running()
     return False
 
 
@@ -380,7 +398,9 @@ class Window(Adw.ApplicationWindow):
         self.reload_pending = 0
         self.listing = False
         self.busy = 0
-        self.restarting = False
+        # Restart progress: None, "closing" (the restart command runs) or "starting".
+        self.restart_phase = None
+        self.restart_polls = 0
         self.mtimes = {}
         # A family is on while any of its (switchable) styles is on.
         self.family_on = {}
@@ -401,6 +421,10 @@ class Window(Adw.ApplicationWindow):
         main_menu.append("Refresh", "win.refresh")
         main_menu.append("Restart Affinity", "win.restart")
         header.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=main_menu))
+        self.spinner = Adw.Spinner() if hasattr(Adw, "Spinner") else Gtk.Spinner(spinning=True)
+        self.spinner.set_visible(False)
+        self.spinner.set_tooltip_text("Restarting Affinity")
+        header.pack_end(self.spinner)
 
         search = Gtk.SearchEntry(placeholder_text="Family, PostScript name or file", hexpand=True)
         search.connect("search-changed", self.on_search)
@@ -567,8 +591,10 @@ class Window(Adw.ApplicationWindow):
 
     def update_banner(self):
         pending = any(self.system.get_item(i).has("pending") for i in range(self.system.get_n_items()))
-        if self.restarting:
-            self.banner.set_title("Waiting for Affinity to close…")
+        self.spinner.set_visible(self.restart_phase is not None)
+        if self.restart_phase:
+            self.banner.set_title("Closing Affinity…" if self.restart_phase == "closing"
+                                  else "Starting Affinity…")
             self.banner.set_button_label(None)
             self.banner.set_revealed(True)
         else:
@@ -681,21 +707,33 @@ class Window(Adw.ApplicationWindow):
         return True
 
     def restart(self):
-        if self.restarting:
+        if self.restart_phase:
             return
 
         def done(ok, _out, err):
-            self.restarting = False
             if not ok:
+                self.restart_phase = None
                 lines = [short(line) for line in err.splitlines() if line.strip()]
                 self.toast(lines[-1] if lines else "Affinity was not restarted")
             else:
-                self.toast("Affinity is starting")
+                self.restart_phase = "starting"
+                self.restart_polls = 0
+                GLib.timeout_add_seconds(1, self.wait_started)
             self.update_banner()
             self.schedule_reload(0)
-        self.restarting = True
+        self.restart_phase = "closing"
         self.update_banner()
         self.cli(["!", "restart"], done, quiet=True)
+
+    def wait_started(self):
+        """Keep the "Starting" state until Affinity shows a window (at most 3 minutes)."""
+        self.restart_polls += 1
+        if affinity_window() or self.restart_polls > 180:
+            self.restart_phase = None
+            self.update_banner()
+            self.schedule_reload(0)
+            return False
+        return True
 
     # ------------------------------------------------------------ UI state
 
