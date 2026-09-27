@@ -7,6 +7,8 @@ DESKTOP_ID="$AI_NAME.desktop"
 # which Wayland shells match to find the entry and its icon.
 FONTS_DESKTOP_ID="io.github.typedev.AffinityInfinity.Fonts.desktop"
 ICON_NAME="$AI_NAME"
+# Bump when the entries change, so refresh_desktop rewrites existing ones.
+DESKTOP_REV=2
 MIME_TYPE="application/x-affinity"
 APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 
@@ -90,11 +92,16 @@ Categories=Graphics;VectorGraphics;RasterGraphics;Publishing;
 MimeType=$MIME_TYPE;
 StartupNotify=true
 StartupWMClass=affinity.exe
-Actions=update;scale;
+Actions=update;updatecheck;scale;
+X-AffinityInfinity-Revision=$DESKTOP_REV
 
 [Desktop Action update]
 Name=Check for updates
 Exec="$exe" update --gui
+
+[Desktop Action updatecheck]
+Name=Update settings…
+Exec="$exe" update --auto --gui
 
 [Desktop Action scale]
 Name=Interface scale…
@@ -121,10 +128,12 @@ EOF
     log "menu entries installed: $APPS_DIR/$DESKTOP_ID, $FONTS_DESKTOP_ID"
 }
 
-# Keep our entry pointing at the AppImage after it was moved or replaced.
+# Keep our entry pointing at the AppImage after it was moved or replaced, and
+# current after an update changed the entries.
 refresh_desktop() {
     [[ -n "${APPIMAGE:-}" && -f "$APPS_DIR/$DESKTOP_ID" ]] && ! isolated_data || return 0
     grep -qxF "TryExec=$APPIMAGE" "$APPS_DIR/$DESKTOP_ID" &&
+        grep -qxF "X-AffinityInfinity-Revision=$DESKTOP_REV" "$APPS_DIR/$DESKTOP_ID" &&
         grep -qxF "TryExec=$APPIMAGE" "$APPS_DIR/$FONTS_DESKTOP_ID" 2>/dev/null && return 0
     install_desktop >/dev/null 2>&1
 }

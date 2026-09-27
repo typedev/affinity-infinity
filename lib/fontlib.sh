@@ -313,12 +313,7 @@ fonts_summary() {
 
 # The Affinity Fonts window (lib/fonts-gui.py), a GTK front end to these commands.
 fonts_gui() {
-    local check='import gi
-gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1")
-from gi.repository import Gtk, Adw
-assert (Gtk.get_major_version(), Gtk.get_minor_version()) >= (4, 12)
-assert (Adw.get_major_version(), Adw.get_minor_version()) >= (1, 4)'
-    python3 -c "$check" 2>/dev/null ||
+    has_gtk_ui ||
         die "Affinity Fonts needs Python bindings for GTK 4.12+ and libadwaita 1.4+ (Debian/Ubuntu: sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1)"
     AI_CLI=$(launcher_path)
     export AI_CLI AI_FONTS_DIR="$FONTS_DIR" AI_CONFIG_DIR="$CONFIG_DIR" AI_WINDOWS_FONTS="$WINDOWS_FONTS"

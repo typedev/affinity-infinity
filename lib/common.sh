@@ -35,6 +35,16 @@ gui_mode() {
     [[ ! -t 2 ]] && [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]] && command -v zenity >/dev/null
 }
 
+# True if the Python GTK 4.12+ / libadwaita 1.4+ bindings of the GTK windows
+# (lib/fonts-gui.py, lib/choose-gui.py) are installed.
+has_gtk_ui() {
+    python3 -c 'import gi
+gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1")
+from gi.repository import Gtk, Adw
+assert (Gtk.get_major_version(), Gtk.get_minor_version()) >= (4, 12)
+assert (Adw.get_major_version(), Adw.get_minor_version()) >= (1, 4)' 2>/dev/null
+}
+
 log() { printf '%s: %s\n' "$AI_NAME" "$*" >&2; }
 
 warn() { printf '%s: warning: %s\n' "$AI_NAME" "$*" >&2; }

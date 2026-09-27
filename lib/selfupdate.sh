@@ -1,7 +1,8 @@
 # shellcheck shell=bash
-# Updates of the AppImage itself (not of Affinity): at most once a day, ask
-# GitHub for the latest release; if it is newer, offer to download it next to
-# the running AppImage, check its sha256, swap it in and restart.
+# Updates of the AppImage itself (not of Affinity): as often as UPDATE_CHECK
+# says but at most once a day, ask GitHub for the latest release; if it is
+# newer, offer to download it next to the running AppImage, check its sha256,
+# swap it in and restart.
 
 SELFUPDATE_INTERVAL=$((24 * 3600))
 
@@ -46,39 +47,50 @@ selfupdate_install() {
 
 # Run by `run` first thing. Never blocks the start on errors. $@: run's arguments.
 selfupdate_check() {
-    [[ -n "${APPIMAGE:-}" && -n "${AI_REPO:-}" ]] || return 0
-    [[ "$(config_get SELF_UPDATE_CHECK 1)" == 1 ]] || return 0
-    local current last now
-    current=$(current_release)
-    [[ -n "$current" ]] || return 0
-    last=$(state_get SELFUPDATE_LAST_CHECK 0)
-    now=$(date +%s)
-    ((now - last >= SELFUPDATE_INTERVAL)) || return 0
-    state_set SELFUPDATE_LAST_CHECK "$now"
-
+    selfupdate_available || return 0
+    update_due "$(state_get SELFUPDATE_LAST_CHECK 0)" "$SELFUPDATE_INTERVAL" && online || return 0
     latest_release || return 0
-    version_gt "${REL_TAG#v}" "${current#v}" || return 0
+    state_set SELFUPDATE_LAST_CHECK "$(date +%s)"
     [[ "$(state_get SKIPPED_RELEASE)" == "$REL_TAG" ]] && return 0
+    selfupdate_offer && exec "$APPIMAGE" run "$@"
+    return 0
+}
 
+# True when running from an AppImage that knows its release.
+selfupdate_available() {
+    [[ -n "${APPIMAGE:-}" && -n "${AI_REPO:-}" && -n "$(current_release)" ]]
+}
+
+# Offer the release found by latest_release if it is newer. Returns 0 only if
+# the AppImage was replaced; UPDATE_NOTE says what happened otherwise.
+selfupdate_offer() {
+    local current answer=later
+    current=$(current_release)
+    # shellcheck disable=SC2034 # read by cmd_update
+    UPDATE_NOTE="Affinity Infinity $current is up to date."
+    version_gt "${REL_TAG#v}" "${current#v}" || return 1
+    # shellcheck disable=SC2034
+    UPDATE_NOTE="Affinity Infinity $REL_TAG is available."
     if [[ ! -w "$(dirname "$APPIMAGE")" ]]; then
         can_show_dialogs && zenity --info --title="Affinity Infinity" \
             --text="Affinity Infinity $REL_TAG is available:\n$REL_PAGE" 2>/dev/null
-        return 0
+        return 1
     fi
-    local answer=later
     if can_show_dialogs; then
         answer=$(zenity --question --title="Affinity Infinity update" \
             --text="Affinity Infinity $REL_TAG is available (installed: $current).\n\nUpdate now? It restarts afterwards." \
             --ok-label="Update" --cancel-label="Later" --extra-button="Skip this version" 2>/dev/null) && answer=install
         [[ "$answer" == "Skip this version" ]] && answer=skip
+    elif [[ -t 0 && -t 2 ]]; then
+        read -r -p "Affinity Infinity $REL_TAG is available (installed: $current). Update now? [y/N/s=skip] " answer
+        case $answer in
+            [yY]*) answer=install ;;
+            [sS]*) answer=skip ;;
+        esac
     fi
     case $answer in
-        install)
-            if selfupdate_install; then
-                exec "$APPIMAGE" run "$@"
-            fi
-            ;;
+        install) selfupdate_install && return 0 ;;
         skip) state_set SKIPPED_RELEASE "$REL_TAG" ;;
     esac
-    return 0
+    return 1
 }

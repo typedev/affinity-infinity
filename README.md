@@ -124,7 +124,7 @@ ones (see `lib/fontsys.sh`).
 
 Start **Affinity** from the applications menu; `.af`, `.afdesign`, `.afphoto`,
 `.afpub` and `.aftemplate` files open in it. The menu entry also has **Check for
-updates** and **Interface scale…** actions.
+updates**, **Update settings…** and **Interface scale…** actions.
 
 The AppImage takes the same commands as the CLI:
 
@@ -134,21 +134,30 @@ $A status              # versions, paths, DPI, last update check
 $A dpi                 # configured / detected / effective interface DPI
 $A dpi 192             # 200 % (96..480), or: dpi auto, dpi --gui
 $A check               # exit 0 if a newer Affinity was published
-$A update              # install it
+$A update              # install a newer Affinity and Affinity Infinity now
+$A update --auto weekly   # how often to look: start, daily, weekly, monthly, off
 $A desktop             # (re)create the menu entry
 ```
 
 ### Updates
 
-- **Affinity**: every start checks for a new Affinity. A HEAD request (~0.2 s)
-  compares the installer's ETag; only when it changed are the last 2 MB of the
-  installer fetched to read its exact version. If it is newer, a dialog offers
+- **Affinity**: by default every start checks for a new Affinity. A HEAD request
+  (~0.2 s) compares the installer's ETag; only when it changed are the last 2 MB of
+  the installer fetched to read its exact version. If it is newer, a dialog offers
   **Install**, **Later** or **Skip this version**. A failed check or update never
-  prevents Affinity from starting (offline, the start is delayed by at most ~3 s).
+  prevents Affinity from starting.
 - **Affinity Infinity itself**: at most once a day the latest GitHub release is
   checked; **Update** downloads the new AppImage, verifies its sha256, replaces the
   file in place and restarts. The AppImage also carries zsync update information for
   Gear Lever / AppImageUpdate.
+
+**Update settings…** in the menu (or `update --auto`) chooses how often both are
+looked for: on every start (default), once a day, week or month, or never.
+**Check for updates** checks both right away, whatever the setting. Only a
+successful check counts: after starting offline, the next start tries again.
+When NetworkManager reports no internet connection, the checks are skipped
+without waiting; otherwise an unreachable server delays the start by a few
+seconds at most.
 
 ### Interface scale (4K / HiDPI)
 
@@ -203,8 +212,7 @@ Known issues:
 | Key | Values | Default |
 |---|---|---|
 | `DPI` | `auto` or `96`..`480` | `auto` |
-| `AUTO_UPDATE_CHECK` | `1` / `0`: check for a new Affinity on start | `1` |
-| `SELF_UPDATE_CHECK` | `1` / `0`: check for a new AppImage daily | `1` |
+| `UPDATE_CHECK` | `start`, `daily`, `weekly`, `monthly`, `off`: how often to look for updates (the AppImage at most daily) | `start` |
 | `ICON` | `affinity` (from `Affinity.exe`) / `own` | `affinity` |
 
 `AFFINITY_INFINITY_DATA` and `AFFINITY_INFINITY_CONFIG` override the two directories

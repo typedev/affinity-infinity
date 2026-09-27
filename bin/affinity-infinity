@@ -28,13 +28,17 @@ Commands:
   install [--exe FILE | --msi FILE] [--force]
                      Install Affinity from the official installer (downloaded
                      unless FILE is given) plus AffinityPluginLoader/WineFix.
-  update [--gui]     Install a newer Affinity if one was published.
+  update [--gui]     Install a newer Affinity (and, from the AppImage, a newer
+                     Affinity Infinity) if one was published; --gui asks first.
+  update --auto [start|daily|weekly|monthly|off|--gui]
+                     Show or set how often run looks for updates (default:
+                     start = Affinity on every start, the AppImage daily).
   restart            Close Affinity like its close button does (it asks about
                      unsaved documents) and start it again, e.g. to apply
                      system font changes.
   check              Check for a newer Affinity (exit 0 = update available).
-  run [FILE...]      Start Affinity. Offers to install a newer Affinity first
-                     (AUTO_UPDATE_CHECK=0 in the config turns this off).
+  run [FILE...]      Start Affinity. Offers to install a newer Affinity first,
+                     as often as "update --auto" says.
   dpi [auto|N|--gui] Show or set the interface scale (96..480, auto = from desktop).
   desktop            Install a menu entry and file associations.
   fonts --gui        Open the Affinity Fonts window.
@@ -136,26 +140,42 @@ cmd_check() {
     return $rc
 }
 
+# Check Affinity and, from an AppImage, Affinity Infinity itself now, whatever
+# UPDATE_CHECK says. --gui asks before installing and reports in one dialog.
 cmd_update() {
-    local gui=0
-    [[ "${1:-}" == --gui ]] && gui=1
+    local gui=0 rc=0 notes=()
+    case ${1:-} in
+        --auto) shift; update_auto "$@"; return ;;
+        --gui) gui=1 ;;
+    esac
     require_setup
-    local rc=0
     find_update || rc=$?
     case $rc in
-        1)
-            log "Affinity $(installed_version) is up to date"
-            [[ $gui == 1 ]] && zenity --info --title="Affinity" --text="Affinity $(installed_version) is up to date." 2>/dev/null
-            return 0
+        0)
+            if [[ $gui == 0 || "$(ask_update)" == install ]]; then
+                install_affinity --force
+                notes+=("Affinity $(installed_version) installed.")
+            fi
             ;;
-        2) die "could not check for updates" ;;
+        1) notes+=("Affinity $(installed_version) is up to date.") ;;
+        *) notes+=("Could not check for a new Affinity (offline?).") ;;
     esac
-    if [[ $gui == 1 && "$(ask_update)" != install ]]; then
-        return 0
+    if selfupdate_available; then
+        if latest_release; then
+            state_set SELFUPDATE_LAST_CHECK "$(date +%s)"
+            if selfupdate_offer; then
+                notes+=("Affinity Infinity updated to $REL_TAG; it is used from the next start.")
+            else
+                notes+=("$UPDATE_NOTE")
+            fi
+        else
+            notes+=("Could not check for a new Affinity Infinity (offline?).")
+        fi
     fi
-    install_affinity --force
-    [[ $gui == 1 ]] && zenity --info --title="Affinity" --text="Affinity $(installed_version) installed." 2>/dev/null
-    return 0
+    local note
+    for note in "${notes[@]}"; do log "$note"; done
+    [[ $gui == 1 ]] && zenity --info --title="Affinity updates" --text="$(printf '%s\n' "${notes[@]}")" 2>/dev/null
+    [[ $rc != 2 ]]
 }
 
 cmd_run() {
@@ -248,6 +268,7 @@ plugin loader:   $(state_get APL_VERSION -) (pinned: $APL_VERSION)
 webview2:        $(v=$(webview2_version); echo "${v:-not installed}")
 fonts:           $(fonts_summary)
 dpi:             $(config_get DPI auto) -> $(effective_dpi)
+update check:    $(update_check_mode)
 last check:      $(t=$(state_get LAST_CHECK); [[ -n "$t" ]] && date -d "@$t" || echo never)
 EOF
 }

@@ -6,6 +6,86 @@
 
 VERSION_TAIL_BYTES=2097152
 
+# How often `run` looks for new versions of Affinity and of the AppImage itself
+# (config UPDATE_CHECK). "start" checks Affinity on every start; the AppImage
+# is checked at most daily either way (GitHub API rate limit).
+UPDATE_CHECK_MODES=(start daily weekly monthly off)
+
+update_check_mode() {
+    local mode
+    mode=$(config_get UPDATE_CHECK)
+    # Before UPDATE_CHECK, AUTO_UPDATE_CHECK=0 turned the start-up check off.
+    [[ -z "$mode" && "$(config_get AUTO_UPDATE_CHECK 1)" == 0 ]] && mode=off
+    case $mode in
+        daily | weekly | monthly | off) echo "$mode" ;;
+        *) echo start ;;
+    esac
+}
+
+# update_due LAST [MIN]: true if an automatic check is due, LAST being the time
+# of the last successful check and MIN a minimum interval in seconds.
+update_due() {
+    local last=${1:-0} interval=${2:-0} mode_interval
+    case $(update_check_mode) in
+        off) return 1 ;;
+        daily) mode_interval=86400 ;;
+        weekly) mode_interval=$((7 * 86400)) ;;
+        monthly) mode_interval=$((30 * 86400)) ;;
+        *) mode_interval=0 ;;
+    esac
+    ((mode_interval > interval)) && interval=$mode_interval
+    (($(date +%s) - last >= interval))
+}
+
+# False when NetworkManager knows there is no internet connection (none, captive
+# portal, limited), so start-up checks are skipped at once instead of waiting
+# for curl's timeouts. Without NetworkManager, assume online.
+online() {
+    local state
+    command -v gdbus >/dev/null || return 0
+    state=$(timeout 1 gdbus call --system --dest org.freedesktop.NetworkManager \
+        --object-path /org/freedesktop/NetworkManager \
+        --method org.freedesktop.DBus.Properties.Get org.freedesktop.NetworkManager Connectivity 2>/dev/null) || return 0
+    [[ ! "$state" =~ uint32\ [123]\> ]]
+}
+
+# update_auto [MODE|--gui]: show or set UPDATE_CHECK.
+update_auto() {
+    local mode=${1:-} m rows=()
+    case $mode in
+        "") update_check_mode; return 0 ;;
+        --gui)
+            local current title="Affinity updates" text="Look for new versions of Affinity and Affinity Infinity:"
+            current=$(update_check_mode)
+            for m in "${UPDATE_CHECK_MODES[@]}"; do
+                case $m in
+                    start) rows+=("$m" "On every start") ;;
+                    daily) rows+=("$m" "Once a day") ;;
+                    weekly) rows+=("$m" "Once a week") ;;
+                    monthly) rows+=("$m" "Once a month") ;;
+                    off) rows+=("$m" "Never (use Check for updates)") ;;
+                esac
+            done
+            if has_gtk_ui; then
+                mode=$(python3 "$ROOT/lib/choose-gui.py" "$title" "$text" "$current" "${rows[@]}") || return 0
+            else
+                local zrows=() i
+                for ((i = 0; i < ${#rows[@]}; i += 2)); do
+                    [[ ${rows[i]} == "$current" ]] && zrows+=(TRUE) || zrows+=(FALSE)
+                    zrows+=("${rows[i]}" "${rows[i + 1]}")
+                done
+                mode=$(zenity --list --radiolist --title="$title" --text="$text" \
+                    --column="" --column=mode --column="" --hide-column=2 --print-column=2 \
+                    --hide-header --width=380 --height=380 "${zrows[@]}" 2>/dev/null) || return 0
+            fi
+            ;;
+    esac
+    [[ " ${UPDATE_CHECK_MODES[*]} " == *" $mode "* ]] ||
+        die "unknown update check: $mode (${UPDATE_CHECK_MODES[*]})"
+    config_set UPDATE_CHECK "$mode"
+    log "update check: $mode"
+}
+
 # Print the version of the published installer (empty on failure).
 remote_version() {
     local tmp version
@@ -78,8 +158,8 @@ ask_update() {
 # Run by `run` before starting Affinity. Never prevents the start: a failed
 # check or install falls through to launching the installed version.
 startup_update_check() {
-    [[ "$(config_get AUTO_UPDATE_CHECK 1)" == 1 ]] || return 0
     [[ -n "$(installed_version)" ]] || return 0
+    update_due "$(state_get LAST_CHECK 0)" && online || return 0
     find_update || return 0
     [[ "$(state_get SKIPPED_VERSION)" == "$NEW_VERSION" ]] && return 0
 
