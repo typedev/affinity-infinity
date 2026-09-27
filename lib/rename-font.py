@@ -3,9 +3,9 @@
 
     rename-font.py IN.ttf OUT.ttf OLD NEW
 
-Replaces OLD with NEW in the family/full/unique/typographic names, and with
-NEW minus spaces in the PostScript name. Copyright, trademark and licence
-records are left untouched. Table checksums and head.checkSumAdjustment are
+Replaces OLD with NEW in the family/full/unique/typographic names, and OLD
+minus spaces with NEW minus spaces in the PostScript name. Copyright, trademark
+and licence records are left untouched. Table checksums and head.checkSumAdjustment are
 recomputed.
 """
 import struct
@@ -46,8 +46,12 @@ def rename_table(name: bytes, old: str, new: str) -> bytes:
         start = string_offset + offset
         raw = name[start : start + length]
         if name_id in RENAMED_IDS or name_id == POSTSCRIPT_ID:
-            replacement = new if name_id in RENAMED_IDS else new.replace(" ", "")
-            raw = encode(platform, decode(platform, raw).replace(old, replacement))
+            text = decode(platform, raw)
+            if name_id in RENAMED_IDS:
+                text = text.replace(old, new)
+            else:  # PostScript names have no spaces
+                text = text.replace(old.replace(" ", ""), new.replace(" ", ""))
+            raw = encode(platform, text)
         out_records.append((platform, encoding, language, name_id, len(raw), len(strings)))
         strings += raw
 
