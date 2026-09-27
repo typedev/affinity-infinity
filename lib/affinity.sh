@@ -246,6 +246,7 @@ install_affinity() {
     state_set INSTALLED_ETAG "$etag"
     progress_phase finish "Adding AffinityPluginLoader and WineFix..." 1
     apl_install
+    fontsync_install
     # The menu entry shows the icon of the installed Affinity; refresh it.
     [[ -f "$APPS_DIR/$DESKTOP_ID" ]] && install_desktop >/dev/null 2>&1
     prefix_configure

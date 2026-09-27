@@ -7,7 +7,7 @@ ROOT=$(dirname "$(dirname "$SELF")")
 
 # shellcheck source=../versions.env
 source "$ROOT/versions.env"
-for _lib in common setup prefix affinity update selfupdate apl fonts webview2 dpi desktop; do
+for _lib in common setup prefix affinity update selfupdate apl fontsync fonts fontlib webview2 dpi desktop; do
     # shellcheck source=/dev/null
     source "$ROOT/lib/$_lib.sh"
 done
@@ -34,6 +34,17 @@ Commands:
                      (AUTO_UPDATE_CHECK=0 in the config turns this off).
   dpi [auto|N|--gui] Show or set the interface scale (96..480, auto = from desktop).
   desktop            Install a menu entry and file associations.
+  fonts [list [--tsv]]
+                     Show the font library: fonts enabled for Affinity in
+                     addition to the system ones.
+  fonts add [--off] FILE|DIR...
+                     Add font files (directories recursively) by reference and
+                     enable them. A running Affinity picks up changes within a
+                     second, also when a font file is rebuilt in place.
+  fonts enable|disable|remove --all | FILE|DIR|NAME...
+                     NAME is a PostScript or family name. Enabling a font
+                     disables other library fonts with the same PostScript
+                     name; remove only drops fonts from the library.
   webview2           EXPERIMENTAL: install the WebView2 runtime for web panels.
                      With Wine 11.0 and 11.12 its browser process crashes and
                      takes Affinity down when Help is opened.
@@ -158,6 +169,7 @@ cmd_run() {
     fi
 
     d3d12_outdated && install_d3d12
+    fontsync_outdated && fontsync_install
     [[ "$(state_get PREFIX_CONFIGURED)" == "$PREFIX_CONFIG_REV" ]] || prefix_configure
     apply_dpi
 
@@ -173,6 +185,8 @@ cmd_run() {
     done
 
     cd "$AFFINITY_DIR" || die "cannot enter $AFFINITY_DIR"
+    # Read by the FontSync plugin inside Affinity.
+    export AI_FONTS_LIST="$FONTS_ACTIVE"
     "$WINE_ROOT/bin/wine" "$AFFINITY_WIN_DIR\\AffinityHook.exe" "${args[@]}" &
     local launcher=$! rc watchdog
     exit_watchdog "$launcher" &
@@ -218,6 +232,7 @@ affinity:        ${installed:-not installed}
 installer etag:  $(state_get INSTALLED_ETAG -)
 plugin loader:   $(state_get APL_VERSION -) (pinned: $APL_VERSION)
 webview2:        $(v=$(webview2_version); echo "${v:-not installed}")
+fonts:           $(fonts_summary)
 dpi:             $(config_get DPI auto) -> $(effective_dpi)
 last check:      $(t=$(state_get LAST_CHECK); [[ -n "$t" ]] && date -d "@$t" || echo never)
 EOF
@@ -234,6 +249,7 @@ main() {
         run) cmd_run "$@" ;;
         dpi) cmd_dpi "$@" ;;
         desktop) install_desktop ;;
+        fonts) cmd_fonts "$@" ;;
         webview2) require_setup; wine_env; webview2_install ;;
         status) cmd_status ;;
         "" | -h | --help | help) usage ;;

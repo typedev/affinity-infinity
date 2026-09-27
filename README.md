@@ -87,6 +87,35 @@ By default the DPI follows the desktop (`Xft.dpi`, GNOME scaling, `GDK_SCALE`);
 `dpi N` or the menu action sets a fixed value. A DPI chosen in the older
 Linux-Affinity-Installer AppImage (`~/.affinity-appimage-dpi.conf`) is imported.
 
+### Fonts
+
+Affinity sees the system fonts (fontconfig) and the prefix's `windows/Fonts`.
+Other fonts, for example ones you are designing, go into the font library: files
+are referenced where they are, not copied, and enabled or disabled while Affinity
+runs. A change shows up in Affinity's font menu within about a second, and a font
+file rebuilt in place is reloaded, so the text in open documents is redrawn with
+the new version.
+
+```sh
+$A fonts add ~/fonts/MyFamily/            # add (recursively) and enable
+$A fonts list                             # state, PostScript name, family / style, file
+$A fonts disable "My Family"              # by family or PostScript name, file or directory
+$A fonts enable ~/fonts/MyFamily-v2/      # switch to another version
+$A fonts remove --all                     # empty the library (files stay where they are)
+```
+
+Affinity finds a font's file by its PostScript name, so two enabled files with the
+same name would be used at random. Enabling a font therefore disables the other
+library fonts with the same PostScript name (e.g. the previous build); a clash with
+a system font can only be reported (`[system]` in `fonts list`).
+
+How it works: under Wine every process has its own GDI font table, so fonts added
+from outside are invisible to a running Affinity. The FontSync plugin
+(`plugin/FontSync/FontSync.cs`, loaded by AffinityPluginLoader) runs inside
+Affinity, adds and removes the enabled fonts with `AddFontResourceEx` and sends
+`WM_FONTCHANGE`, on which Affinity rebuilds its font list. The plugin is compiled
+on your machine with the prefix's .NET compiler.
+
 ### Rollback
 
 The MSIs of the installed and the previous Affinity version are kept:
@@ -104,6 +133,7 @@ Handled automatically:
 - Affinity renders through vkd3d-proton (Direct3D 12 on Vulkan).
 - The 64-bit font registry gets the regular faces of Arial, Tahoma etc. (without them
   the whole UI is drawn in Arial Italic); Segoe UI is provided by Selawik.
+- Fonts from the font library are applied while Affinity runs (see [Fonts](#fonts)).
 - Affinity often hangs after its last window closes (settings are saved by then); a
   watchdog ends the Wine session ~20 s later instead of leaving gigabytes of memory in use.
 
@@ -121,6 +151,7 @@ Known issues:
 | `~/Applications/Affinity-Infinity-x86_64.AppImage` | the AppImage (via `install.sh`) |
 | `~/.local/share/affinity-infinity/prefix/` | Wine prefix: Affinity, its settings, anything saved in its Windows folders |
 | `~/.local/share/affinity-infinity/cache/` | Affinity MSIs, downloads, setup and msiexec logs |
+| `~/.local/share/affinity-infinity/fonts/` | font library (`library.tsv`) and the enabled fonts (`active.list`) |
 | `~/.local/share/affinity-infinity/state.env` | installed versions, ETag, applied DPI, setup progress |
 | `~/.config/affinity-infinity/config.env` | settings, see below |
 

@@ -12,6 +12,11 @@ PREFIX_DIR="$DATA_DIR/prefix"
 CACHE_DIR="$DATA_DIR/cache"
 STATE_FILE="$DATA_DIR/state.env"
 CONFIG_FILE="$CONFIG_DIR/config.env"
+# Font manager: the library (owned by the fonts command) and the list of enabled
+# font files that the FontSync plugin inside Affinity loads.
+FONTS_DIR="$DATA_DIR/fonts"
+FONTS_LIBRARY="$FONTS_DIR/library.tsv"
+FONTS_ACTIVE="$FONTS_DIR/active.list"
 
 AFFINITY_DIR="$PREFIX_DIR/drive_c/Program Files/Affinity/Affinity"
 AFFINITY_WIN_DIR='C:\Program Files\Affinity\Affinity'
