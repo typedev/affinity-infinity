@@ -1,0 +1,22 @@
+From: Affinity Infinity
+Subject: [PATCH] winex11: Move windows with the user32 loop, not the window manager.
+
+---
+--- a/dlls/winex11.drv/window.c	2026-09-27 13:59:11.189914583 -0300
++++ b/dlls/winex11.drv/window.c	2026-09-27 13:59:11.199118705 -0300
+@@ -3612,6 +3612,15 @@
+     switch (wparam & 0xfff0)
+     {
+     case SC_MOVE:
++        /* Let user32 run its own move loop instead of handing the drag to the
++         * window manager: during a _NET_WM_MOVERESIZE move the application sees
++         * neither WM_MOVING nor mouse input, so docking UIs (e.g. Affinity's
++         * panels) cannot track where the window is dropped.
++         * WINE_X11_WM_MOVE=1 restores the window manager move. */
++        {
++            const char *wm_move = getenv( "WINE_X11_WM_MOVE" );
++            if (!wm_move || wm_move[0] != '1') goto failed;
++        }
+         if (!hittest) dir = _NET_WM_MOVERESIZE_MOVE_KEYBOARD;
+         else dir = _NET_WM_MOVERESIZE_MOVE;
+         break;

@@ -10,5 +10,12 @@ Bézier subdivision, collinear joins, bounded recursion), XDG Desktop Portal fil
 dialogs for comdlg32, and assorted OpenCL/SRW-lock optimisations. Patches are
 applied in file-name order with `patch -p1`.
 
-To update, copy the new `patches/wine-<version>/` directory here, record the
-commit above, and bump `WINE_VERSION`/`AI_WINE_REV` in `../build.env`.
+`0100-*` and later are this project's own:
+
+- `0100-winex11-move-windows-with-user32-loop.patch`: a window drag (`SC_MOVE`) runs
+  user32's move loop instead of `_NET_WM_MOVERESIZE`, so Affinity gets `WM_MOVING`
+  and mouse input while a panel is dragged and can dock it. `WINE_X11_WM_MOVE=1`
+  restores the window manager move.
+
+To update, copy the new `patches/wine-<version>/` directory here (keeping the
+`0100-*` patches, rebased if needed), record the commit above, and bump `WINE_VERSION`/`AI_WINE_REV` in `../build.env`.
