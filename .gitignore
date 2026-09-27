@@ -2,3 +2,4 @@
 wine/out/
 wine/.cache/
 packaging/out/
+__pycache__/

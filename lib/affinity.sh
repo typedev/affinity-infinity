@@ -285,7 +285,7 @@ install_affinity() {
     apl_install
     fontsync_install
     # The menu entry shows the icon of the installed Affinity; refresh it.
-    [[ -f "$APPS_DIR/$DESKTOP_ID" ]] && install_desktop >/dev/null 2>&1
+    [[ -f "$APPS_DIR/$DESKTOP_ID" ]] && ! isolated_data && install_desktop >/dev/null 2>&1
     prefix_configure
     prune_cache "$version"
 }

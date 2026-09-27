@@ -89,32 +89,45 @@ Linux-Affinity-Installer AppImage (`~/.affinity-appimage-dpi.conf`) is imported.
 
 ### Fonts
 
-Affinity sees the system fonts (fontconfig) and the prefix's `windows/Fonts`.
-Other fonts, for example ones you are designing, go into the font library: files
-are referenced where they are, not copied, and enabled or disabled while Affinity
-runs. A change shows up in Affinity's font menu within about a second, and a font
-file rebuilt in place is reloaded, so the text in open documents is redrawn with
-the new version.
+**Affinity Fonts** (in the applications menu, or `$A fonts --gui`) chooses the fonts
+Affinity sees. *My Fonts* is your library: drop font files or folders onto the
+window; they are referenced where they are, not copied. Switching a font or a whole
+family on or off shows up in Affinity's font menu within about a second, and a font
+file rebuilt in place is reloaded, so open documents are redrawn with the new
+version. Every face has a sample line (text, size and white/black background are
+adjustable). *System* lists the fonts Affinity gets from Linux (fontconfig), the Wine
+prefix and Wine itself; these can be disabled too, but only from the next start of
+Affinity. **Restart Affinity** closes it like its close button (it asks about unsaved
+documents) and starts it again. The fonts Affinity's interface needs (Tahoma, Segoe
+UI, Arial, Wine's own) are locked.
+
+The same from the command line (the window needs Python bindings for GTK 4.12+ and
+libadwaita 1.4+: `python3-gi gir1.2-gtk-4.0 gir1.2-adw-1` on Debian/Ubuntu):
 
 ```sh
 $A fonts add ~/fonts/MyFamily/            # add (recursively) and enable
-$A fonts list                             # state, PostScript name, family / style, file
+$A fonts list [--all]                     # state, PostScript name, family / style, file
 $A fonts disable "My Family"              # by family or PostScript name, file or directory
 $A fonts enable ~/fonts/MyFamily-v2/      # switch to another version
+$A fonts disable --system "DejaVu Serif"  # a system font, from the next start
 $A fonts remove --all                     # empty the library (files stay where they are)
+$A restart                                # close Affinity properly and start it again
 ```
 
 Affinity finds a font's file by its PostScript name, so two enabled files with the
 same name would be used at random. Enabling a font therefore disables the other
 library fonts with the same PostScript name (e.g. the previous build); a clash with
-a system font can only be reported (`[system]` in `fonts list`).
+a system font is marked and the system one can be disabled.
 
 How it works: under Wine every process has its own GDI font table, so fonts added
 from outside are invisible to a running Affinity. The FontSync plugin
 (`plugin/FontSync/FontSync.cs`, loaded by AffinityPluginLoader) runs inside
 Affinity, adds and removes the enabled fonts with `AddFontResourceEx` and sends
 `WM_FONTCHANGE`, on which Affinity rebuilds its font list. The plugin is compiled
-on your machine with the prefix's .NET compiler.
+on your machine with the prefix's .NET compiler. Fonts loaded when Affinity starts
+cannot be removed from it, hence system fonts change at the next start: prefix fonts
+are moved aside, and Linux fonts reach Wine through a folder of links to the enabled
+ones (see `lib/fontsys.sh`).
 
 ### Rollback
 
@@ -151,7 +164,7 @@ Known issues:
 | `~/Applications/Affinity-Infinity-x86_64.AppImage` | the AppImage (via `install.sh`) |
 | `~/.local/share/affinity-infinity/prefix/` | Wine prefix: Affinity, its settings, anything saved in its Windows folders |
 | `~/.local/share/affinity-infinity/cache/` | Affinity MSIs, downloads, setup and msiexec logs |
-| `~/.local/share/affinity-infinity/fonts/` | font library (`library.tsv`) and the enabled fonts (`active.list`) |
+| `~/.local/share/affinity-infinity/fonts/` | font library (`library.tsv`), the enabled fonts (`active.list`), disabled system fonts and their helpers |
 | `~/.local/share/affinity-infinity/state.env` | installed versions, ETag, applied DPI, setup progress |
 | `~/.config/affinity-infinity/config.env` | settings, see below |
 

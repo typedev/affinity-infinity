@@ -120,7 +120,7 @@ This takes about 15 minutes and downloads about 1.7 GB, once."
     prefetch_installer
     prefix_build
     install_affinity --force
-    foreign_integration >/dev/null || install_desktop
+    foreign_integration >/dev/null || isolated_data || install_desktop
     progress_end
 }
 
