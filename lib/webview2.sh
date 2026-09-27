@@ -1,9 +1,11 @@
 # shellcheck shell=bash
 # Microsoft Edge WebView2 Runtime, used by Affinity's web-based panels (home
-# screen, account sign-in, help). EXPERIMENTAL, not part of `install`: with the
-# seeded Wine 11.0 the browser process crashes (Chromium CHECK failures in the
-# GPU and browser processes) and Affinity dies with an unhandled exception when
-# Help is opened; without WebView2 Help just does not open. Installed once per prefix from a pinned
+# screen, account sign-in, help). EXPERIMENTAL, not part of `install`: with
+# Wine 11.0 and 11.12 the browser process crashes (Chromium CHECK failures in
+# the GPU and browser processes, msedge.dll +0xa358862 / +0x801542d, also with
+# --disable-gpu --no-sandbox) and Affinity dies with an unhandled exception
+# when Help is opened; without WebView2 Help just does not open. Untried: a
+# fixed-version runtime (e.g. 109) via WEBVIEW2_BROWSER_EXECUTABLE_FOLDER. Installed once per prefix from a pinned
 # standalone installer known to work under Wine; Edge Update is then disabled
 # so it does not replace that version with one that may not.
 

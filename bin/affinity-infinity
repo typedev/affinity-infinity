@@ -35,8 +35,8 @@ Commands:
   dpi [auto|N|--gui] Show or set the interface scale (96..480, auto = from desktop).
   desktop            Install a menu entry and file associations.
   webview2           EXPERIMENTAL: install the WebView2 runtime for web panels.
-                     With Wine 11.0 its browser process crashes and takes
-                     Affinity down when Help is opened.
+                     With Wine 11.0 and 11.12 its browser process crashes and
+                     takes Affinity down when Help is opened.
   status             Show versions and paths.
 
 Data:   $DATA_DIR
