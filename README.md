@@ -1,16 +1,30 @@
 # Affinity Infinity
 
-Run [Affinity by Canva](https://www.affinity.studio/) on Linux. Affinity is installed and
-updated **from the official installer**, so you are not waiting for someone to
-repackage every release.
+Run [Affinity by Canva](https://www.affinity.studio/) on Linux, as one AppImage.
+
+What sets it apart:
+
+- **Affinity updates itself.** Affinity is installed and updated from Canva's
+  official installer, so you are not waiting for someone to repackage every
+  release. Every start checks for a new version in a fraction of a second and
+  offers to install it. This was tested with the Affinity releases published so
+  far; a future release that changes its installer may need a fix here. See
+  [Updates](#updates).
+- **Live font manager.** Turn your own fonts on and off while Affinity is running:
+  they appear in its font menu within a second, no restart needed, and a font you
+  rebuild is reloaded in open documents. Take control of the font menu by hiding
+  the hundreds of Linux system fonts you never use. See [Fonts](#fonts).
+- **Docking panels work.** Studio panels can be dragged onto each other and back
+  into the dock, as on Windows. Under stock Wine they stay loose, floating windows
+  that clutter the screen; this build carries a Wine fix for it.
 
 Nothing from Microsoft or Canva is redistributed:
 
 - **Wine** is built by this project (`wine/`): Wine 11.12 with the Affinity patches
   from [Affinity-Wine-Builder](https://github.com/ryzendew/Affinity-Wine-Builder)
-  (ElementalWarrior's work, d2d1 fixes, XDG portal file dialogs) plus
-  [vkd3d-proton](https://github.com/HansKristian-Work/vkd3d-proton), built on Ubuntu
-  22.04 (glibc 2.35) so it runs on current Ubuntu, Fedora and friends.
+  (ElementalWarrior's work, d2d1 fixes, XDG portal file dialogs), a panel docking
+  fix of our own, and [vkd3d-proton](https://github.com/HansKristian-Work/vkd3d-proton),
+  built on Ubuntu 22.04 (glibc 2.35) so it runs on current Ubuntu, Fedora and friends.
 - **The Windows environment** (Wine prefix with .NET Framework 4.8, VC++ 2022, core
   fonts) is built on your machine on first start, by winetricks from Microsoft's
   installers.
@@ -18,9 +32,7 @@ Nothing from Microsoft or Canva is redistributed:
   installer is unpacked with Wine's `msiexec` (no installer GUI), and
   [AffinityPluginLoader + WineFix](https://github.com/noahc3/AffinityPluginLoader) are
   added on top to fix Wine-specific bugs.
-- **Fonts and icon**: [Selawik](https://github.com/microsoft/Selawik) is renamed to
-  "Segoe UI" on your machine, and the menu icon is taken from your installed
-  `Affinity.exe`.
+- **The menu icon** is taken from your installed `Affinity.exe`.
 
 Not affiliated with Canva. Affinity is a trademark of Canva.
 
@@ -37,8 +49,10 @@ Affinity is downloaded (in parallel) and installed. Affinity opens when it is do
 The first setup takes about 10–15 minutes and downloads about 1.7 GB, once.
 
 Requirements: x86_64, `fuse3` (preinstalled on desktop Ubuntu and Fedora; `libfuse2`
-is **not** needed), `zenity` for the dialogs, a Vulkan-capable GPU driver, and
-optionally `python3` (Segoe UI substitute and Affinity's menu icon).
+is **not** needed), `zenity` for the dialogs, a Vulkan-capable GPU driver and
+`python3`. The **Affinity Fonts** window additionally needs Python bindings for
+GTK 4.12+ and libadwaita 1.4+ (`python3-gi gir1.2-gtk-4.0 gir1.2-adw-1` on
+Debian/Ubuntu; preinstalled on current GNOME desktops).
 
 You can also download `Affinity-Infinity-<version>-x86_64.AppImage` from the
 [releases](https://github.com/typedev/affinity-infinity/releases), make it executable and
@@ -50,6 +64,61 @@ Uninstall (asks before deleting Affinity, its settings and files):
 ```sh
 curl -fsSL https://raw.githubusercontent.com/typedev/affinity-infinity/main/install.sh | bash -s -- --uninstall
 ```
+
+## Fonts
+
+![Affinity Fonts: the System tab, with a sample line for every face](images/affinity-font-sync.png)
+
+Font management is the key feature of this build. On Linux, Affinity's font menu is
+normally a dump of everything fontconfig knows (hundreds of DejaVu, Noto and other
+system faces), and a font installed while Affinity runs does not show up until it is
+restarted. **Affinity Fonts** (in the applications menu, or the `fonts --gui` command) fixes
+both, while you keep working:
+
+- **My Fonts** is your library. Drop font files or folders onto the window; they are
+  referenced where they are, not copied. Switching a font or a whole family on or
+  off shows up in Affinity's font menu **within about a second, without
+  restarting Affinity**.
+- **Live reload for type designers**: a font file rebuilt in place is reloaded, and
+  open documents are redrawn with the new version. Keep several builds of a family
+  in the library and switch between them.
+- **System** lists the fonts Affinity gets from Linux (fontconfig), the Wine prefix
+  and Wine itself. Disable the ones you never use to get a short, clean font menu
+  (the screenshot above has 298 disabled). This takes effect at the next start of
+  Affinity; **Restart Affinity** in the window closes it like its close button (it
+  asks about unsaved documents) and starts it again. The fonts Affinity's interface
+  needs (Tahoma, Arial, Wine's own) are locked.
+- Every face has a sample line; text, size and white/black background are
+  adjustable, and the search matches family, PostScript name or file.
+
+The same from the command line:
+
+```sh
+A=~/Applications/Affinity-Infinity-x86_64.AppImage
+$A fonts --gui                            # the Affinity Fonts window
+$A fonts add ~/fonts/MyFamily/            # add (recursively) and enable
+$A fonts list [--all]                     # state, PostScript name, family / style, file
+$A fonts disable "My Family"              # by family or PostScript name, file or directory
+$A fonts enable ~/fonts/MyFamily-v2/      # switch to another version
+$A fonts disable --system "DejaVu Serif"  # a system font, from the next start
+$A fonts remove --all                     # empty the library (files stay where they are)
+$A restart                                # close Affinity properly and start it again
+```
+
+Affinity finds a font's file by its PostScript name, so two enabled files with the
+same name would be used at random. Enabling a font therefore disables the other
+library fonts with the same PostScript name (e.g. the previous build); a clash with
+a system font is marked and the system one can be disabled.
+
+How it works: under Wine every process has its own GDI font table, so fonts added
+from outside are invisible to a running Affinity. The FontSync plugin
+(`plugin/FontSync/FontSync.cs`, loaded by AffinityPluginLoader) runs inside
+Affinity, adds and removes the enabled fonts with `AddFontResourceEx` and sends
+`WM_FONTCHANGE`, on which Affinity rebuilds its font list. The plugin is compiled
+on your machine with the prefix's .NET compiler. Fonts loaded when Affinity starts
+cannot be removed from it, hence system fonts change at the next start: prefix fonts
+are moved aside, and Linux fonts reach Wine through a folder of links to the enabled
+ones (see `lib/fontsys.sh`).
 
 ## Use
 
@@ -87,48 +156,6 @@ By default the DPI follows the desktop (`Xft.dpi`, GNOME scaling, `GDK_SCALE`);
 `dpi N` or the menu action sets a fixed value. A DPI chosen in the older
 Linux-Affinity-Installer AppImage (`~/.affinity-appimage-dpi.conf`) is imported.
 
-### Fonts
-
-**Affinity Fonts** (in the applications menu, or `$A fonts --gui`) chooses the fonts
-Affinity sees. *My Fonts* is your library: drop font files or folders onto the
-window; they are referenced where they are, not copied. Switching a font or a whole
-family on or off shows up in Affinity's font menu within about a second, and a font
-file rebuilt in place is reloaded, so open documents are redrawn with the new
-version. Every face has a sample line (text, size and white/black background are
-adjustable). *System* lists the fonts Affinity gets from Linux (fontconfig), the Wine
-prefix and Wine itself; these can be disabled too, but only from the next start of
-Affinity. **Restart Affinity** closes it like its close button (it asks about unsaved
-documents) and starts it again. The fonts Affinity's interface needs (Tahoma, Segoe
-UI, Arial, Wine's own) are locked.
-
-The same from the command line (the window needs Python bindings for GTK 4.12+ and
-libadwaita 1.4+: `python3-gi gir1.2-gtk-4.0 gir1.2-adw-1` on Debian/Ubuntu):
-
-```sh
-$A fonts add ~/fonts/MyFamily/            # add (recursively) and enable
-$A fonts list [--all]                     # state, PostScript name, family / style, file
-$A fonts disable "My Family"              # by family or PostScript name, file or directory
-$A fonts enable ~/fonts/MyFamily-v2/      # switch to another version
-$A fonts disable --system "DejaVu Serif"  # a system font, from the next start
-$A fonts remove --all                     # empty the library (files stay where they are)
-$A restart                                # close Affinity properly and start it again
-```
-
-Affinity finds a font's file by its PostScript name, so two enabled files with the
-same name would be used at random. Enabling a font therefore disables the other
-library fonts with the same PostScript name (e.g. the previous build); a clash with
-a system font is marked and the system one can be disabled.
-
-How it works: under Wine every process has its own GDI font table, so fonts added
-from outside are invisible to a running Affinity. The FontSync plugin
-(`plugin/FontSync/FontSync.cs`, loaded by AffinityPluginLoader) runs inside
-Affinity, adds and removes the enabled fonts with `AddFontResourceEx` and sends
-`WM_FONTCHANGE`, on which Affinity rebuilds its font list. The plugin is compiled
-on your machine with the prefix's .NET compiler. Fonts loaded when Affinity starts
-cannot be removed from it, hence system fonts change at the next start: prefix fonts
-are moved aside, and Linux fonts reach Wine through a folder of links to the enabled
-ones (see `lib/fontsys.sh`).
-
 ### Rollback
 
 The MSIs of the installed and the previous Affinity version are kept:
@@ -145,8 +172,11 @@ Handled automatically:
   loaded through AffinityPluginLoader; Wine's `d2d1` is replaced by WineFix's patched one.
 - Affinity renders through vkd3d-proton (Direct3D 12 on Vulkan).
 - The 64-bit font registry gets the regular faces of Arial, Tahoma etc. (without them
-  the whole UI is drawn in Arial Italic); Segoe UI is provided by Selawik.
-- Fonts from the font library are applied while Affinity runs (see [Fonts](#fonts)).
+  the whole UI is drawn in Arial Italic).
+- Fonts are managed while Affinity runs (see [Fonts](#fonts)).
+- Studio panels dock and group: stock Wine hands a window drag to the window
+  manager, so Affinity never sees where a panel is dropped. This build's Wine moves
+  windows itself, as Windows does (`WINE_X11_WM_MOVE=1` restores the old behaviour).
 - Affinity often hangs after its last window closes (settings are saved by then); a
   watchdog ends the Wine session ~20 s later instead of leaving gigabytes of memory in use.
 
@@ -223,8 +253,7 @@ uv pip install --python .venv shellcheck-py
 [noahc3](https://github.com/noahc3/AffinityPluginLoader) (AffinityPluginLoader, WineFix),
 [AffinityOnLinux](https://github.com/seapear/AffinityOnLinux) (guides),
 [vkd3d-proton](https://github.com/HansKristian-Work/vkd3d-proton),
-[winetricks](https://github.com/Winetricks/winetricks),
-[Selawik](https://github.com/microsoft/Selawik), and the Wine project.
+[winetricks](https://github.com/Winetricks/winetricks), and the Wine project.
 
 ## License
 
