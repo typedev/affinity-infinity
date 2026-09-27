@@ -219,7 +219,7 @@ Pinned inputs with checksums: `versions.env`, `wine/build.env`, `packaging/tools
 ```sh
 wine/build-in-container.sh             # build Wine in podman/docker -> wine/out/
 packaging/build-tools.sh               # winetricks + cabextract -> packaging/out/tools
-packaging/build-appimage.sh wine/out/wine-11.12-ai1-x86_64.tar.xz   # -> packaging/out/
+packaging/build-appimage.sh wine/out/wine-11.12-ai2-x86_64.tar.xz   # -> packaging/out/
 ```
 
 Running the CLI from the repository uses the Wine in `<data>/runtime/current`

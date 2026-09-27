@@ -16,7 +16,7 @@ uv pip install --python .venv shellcheck-py
 
 wine/build-in-container.sh              # build Wine in podman/docker (ubuntu:22.04) -> wine/out/*.tar.xz (~5 min on 32 cores)
 packaging/build-tools.sh                # winetricks + cabextract/libmspack -> packaging/out/tools
-packaging/build-appimage.sh wine/out/wine-11.12-ai1-x86_64.tar.xz [VERSION]   # -> packaging/out/*.AppImage
+packaging/build-appimage.sh wine/out/wine-11.12-ai2-x86_64.tar.xz [VERSION]   # -> packaging/out/*.AppImage
 ```
 
 There are no unit tests. Verify changes by running the real thing against an **isolated data dir** so the user's installation is untouched:
