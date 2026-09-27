@@ -292,6 +292,7 @@ install_affinity() {
 
 # Keep the MSI of the installed version and the one before it (for rollback);
 # the downloaded bootstrapper is not needed once its MSI is extracted.
+# Old msiexec logs go too.
 prune_cache() {
     local current=$1 f
     local -a msis
@@ -309,6 +310,12 @@ prune_cache() {
         fi
         rm -f "$f"
     done
+    # One msiexec log per install (msiexec-YYYYMMDD-HHMMSS.log, so the glob
+    # sorts by time); keep the last two.
+    local -a logs=("$CACHE_DIR"/msiexec-*.log)
+    if [[ -f "${logs[0]}" ]] && ((${#logs[@]} > 2)); then
+        rm -f "${logs[@]:0:${#logs[@]}-2}"
+    fi
 }
 
 # Affinity sometimes hangs after its last window is closed (its settings are

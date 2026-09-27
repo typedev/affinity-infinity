@@ -17,6 +17,11 @@ apl_install() {
         }
         mv "$archive.part" "$archive"
     fi
+    # Archives of other (older) APL versions.
+    local f
+    for f in "$CACHE_DIR/$APL_ASSET"-*; do
+        [[ -f "$f" && "$f" != "$archive" ]] && rm -f "$f"
+    done
 
     # The archive only contains APL binaries and apl/plugins; the user's apl/config is left alone.
     tar -xJf "$archive" -C "$AFFINITY_DIR" --no-same-owner || die "failed to unpack $archive"

@@ -37,6 +37,7 @@ setup_from_appimage() {
     rm -rf "$rt"
     mv "$root/usr" "$rt"
     ln -sfn "$wine_version" "$RUNTIME_DIR/current"
+    runtime_prune "$wine_version"
 
     # Prefix: drop the bundled Affinity and host-specific drive links.
     local pfx="$root/wineprefix"

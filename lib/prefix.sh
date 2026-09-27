@@ -98,6 +98,17 @@ prefix_backup() {
     log "previous prefix kept as $backup"
 }
 
+# Remove the data dir's runtimes other than KEEP (the one runtime/current points at).
+runtime_prune() {
+    local keep=$1 d
+    for d in "$RUNTIME_DIR"/*/; do
+        d=${d%/}
+        [[ -L "$d" || "${d##*/}" == "$keep" ]] && continue
+        rm -rf "${d:?}"
+        log "removed old runtime ${d##*/}"
+    done
+}
+
 # Unpack a Wine build tarball (from wine/build.sh) as the data dir's runtime.
 runtime_install_tarball() {
     local tarball=$1 name
@@ -109,5 +120,6 @@ runtime_install_tarball() {
     tar -C "$RUNTIME_DIR" -xf "$tarball"
     [[ -x "$RUNTIME_DIR/$name/bin/wine" ]] || die "no bin/wine in $tarball"
     ln -sfn "$name" "$RUNTIME_DIR/current"
+    runtime_prune "$name"
     log "runtime $name installed"
 }
