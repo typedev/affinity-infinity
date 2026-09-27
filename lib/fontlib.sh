@@ -5,8 +5,8 @@
 #
 # Affinity finds a font's file by its PostScript name: with two enabled files
 # of the same PostScript name it silently uses either. So enabling a font
-# disables the other library fonts with the same name; a clash with a system
-# font (fontconfig or the prefix's windows/Fonts) can only be reported.
+# disables the other library fonts with the same name; a clash with an enabled
+# system font is reported (the system one can be disabled, see lib/fontsys.sh).
 #
 # library.tsv holds "on|off<TAB>path" lines; active.list, the enabled files
 # that exist, is what the plugin reads. Both are replaced atomically. The
@@ -78,25 +78,6 @@ fonts_scan_library() {
     fonts_scan "${existing[@]}"
 }
 
-# PostScript names of system fonts outside the library: SYSTEM_PS[name]=file.
-declare -A SYSTEM_PS=()
-fonts_scan_system() {
-    local ps file
-    SYSTEM_PS=()
-    if command -v fc-list >/dev/null; then
-        while IFS=$US read -r ps file; do
-            [[ -n "$ps" && -n "$file" ]] || continue
-            [[ -z "${LIB_INDEX[$file]:-}" ]] && SYSTEM_PS[$ps]=$file
-        done < <(fc-list --format '%{postscriptname}\t%{file}\n' 2>/dev/null | tr '\t' '\037')
-    fi
-    if [[ -d "$PREFIX_DIR/drive_c/windows/Fonts" ]]; then
-        while IFS=$US read -r file _ ps _; do
-            [[ -n "$ps" ]] && SYSTEM_PS[$ps]=$file
-        done < <(find "$PREFIX_DIR/drive_c/windows/Fonts" -maxdepth 1 -type f -regextype posix-extended \
-            -regex ".*$FONT_EXT_RE" -print0 | xargs -0 -r python3 "$ROOT/lib/font-info.py" 2>/dev/null | tr '\t' '\037')
-    fi
-}
-
 # fonts_expand ARG...: font files for the arguments (files, or directories
 # searched recursively), as absolute paths, one per line, sorted.
 fonts_expand() {
@@ -113,31 +94,26 @@ fonts_expand() {
 }
 
 # fonts_match ARG...: library indexes matching each argument: a file, a
-# directory (everything below it), or a PostScript or family name.
+# directory (everything below it), or a PostScript or family name. Quiet: the
+# caller reports arguments that matched nothing.
 fonts_match() {
-    local a i dir found row
+    local a i dir
     for a in "$@"; do
-        found=0
-        if [[ -e "$a" ]]; then
-            dir=$(realpath -- "$a")
+        if [[ -e "$a" || "$a" == /* ]]; then
+            dir=$(realpath -m -- "$a")
             for i in "${!LIB_PATH[@]}"; do
-                if [[ "${LIB_PATH[$i]}" == "$dir" || "${LIB_PATH[$i]}" == "$dir/"* ]]; then
-                    echo "$i"
-                    found=1
-                fi
+                [[ "${LIB_PATH[$i]}" == "$dir" || "${LIB_PATH[$i]}" == "$dir/"* ]] && echo "$i"
             done
         else
             for i in "${!LIB_PATH[@]}"; do
                 while IFS=$US read -r _ _ ps family _; do
-                    if [[ -n "$ps" && ( "$a" == "$ps" || "$a" == "$family" ) ]]; then
+                    if [[ -n "$ps" && ("$a" == "$ps" || "$a" == "$family") ]]; then
                         echo "$i"
-                        found=1
                         break
                     fi
                 done <<<"$(tr '\t' '\037' <<<"${FONT_ROWS[${LIB_PATH[$i]}]:-}")"
             done
         fi
-        ((found)) || warn "not in the font library: $a"
     done
 }
 
@@ -206,19 +182,46 @@ fonts_add() {
     fonts_save
 }
 
+# fonts_set enable|disable|remove [--system] --all | ARG...: each argument
+# names library fonts; one that matches none (or all with --system) names
+# system fonts, which only enable and disable accept.
 fonts_set() {
-    local action=$1 i
-    local -a idx=()
+    local action=$1 system=0 all=0 a i
+    local -a args=() idx=() sys=() found=()
     shift
-    (($#)) || die "usage: $AI_NAME fonts $action --all | FILE|DIR|NAME..."
+    for a in "$@"; do
+        case $a in
+            --system) system=1 ;;
+            --all) all=1 ;;
+            *) args+=("$a") ;;
+        esac
+    done
+    ((all || ${#args[@]})) || die "usage: $AI_NAME fonts $action [--system] --all | FILE|DIR|NAME..."
     fonts_load
     fonts_scan_library
-    if [[ "$1" == --all ]]; then
-        idx=("${!LIB_PATH[@]}")
+    fonts_system_load
+    if ((all)); then
+        ((system)) && sys=("${!SYS_PATH[@]}") || idx=("${!LIB_PATH[@]}")
     else
-        mapfile -t idx < <(fonts_match "$@")
+        fonts_system_scan
+        for a in "${args[@]}"; do
+            found=()
+            ((system)) || mapfile -t found < <(fonts_match "$a")
+            if ((${#found[@]})); then
+                idx+=("${found[@]}")
+                continue
+            fi
+            mapfile -t found < <(fonts_system_match "$a")
+            if ((${#found[@]})) && [[ "$action" != remove ]]; then
+                sys+=("${found[@]}")
+            else
+                warn "no such font${found[*]:+ in the library}: $a"
+            fi
+        done
     fi
-    ((${#idx[@]})) || return 1
+    ((${#idx[@]} || ${#sys[@]})) || return 1
+    ((${#sys[@]})) && fonts_system_set "$action" "${sys[@]}"
+    ((${#idx[@]})) || return 0
     case $action in
         enable)
             fonts_scan_system
@@ -233,6 +236,7 @@ fonts_set() {
             ;;
         remove)
             for i in "${idx[@]}"; do
+                [[ -n "${LIB_PATH[i]+x}" ]] || continue
                 log "removed from the library: ${LIB_PATH[$i]}"
                 unset 'LIB_PATH[i]' 'LIB_STATE[i]'
             done
@@ -242,33 +246,61 @@ fonts_set() {
     fonts_save
 }
 
-# fonts list [--tsv]: one line per face. --tsv (for scripts and the GUI):
-#   state  flags  postscript  family  style  named-instances  path
-# flags: comma-separated "missing", "unreadable", "system" (a system font has
-# the same PostScript name) or "-".
+# _fonts_rows SOURCE STATE FLAGS FILE PATH: print the faces of one font file.
+_fonts_rows() {
+    local source=$1 state=$2 base=$3 file=$4 path=$5 rows flags ps family style instances
+    rows=${FONT_ROWS[$file]:-}
+    if [[ -z "$rows" ]]; then
+        base+=${base:+,}$([[ -f "$file" ]] && echo unreadable || echo missing)
+        rows=$'-\t0\t\t\t\t0'
+    fi
+    rows=${rows%$'\n'}
+    while IFS=$US read -r _ _ ps family style instances; do
+        flags=$base
+        if [[ "$source" == library && -n "$ps" && -n "${SYSTEM_PS[$ps]:-}" ]]; then
+            flags+=${flags:+,}system
+        fi
+        if ((FONTS_TSV)); then
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$source" "$state" "${flags:--}" "$ps" "$family" "$style" "${instances:-0}" "$path"
+        else
+            printf '%-10s %-3s  %-32s  %-40s  %s%s\n' "$source" "$state" "${ps:--}" "$family${style:+ / $style}" "$path" \
+                "$( ((instances > 0)) && printf '  [variable, %s instances]' "$instances")${flags:+  [$flags]}"
+        fi
+    done <<<"${rows//$'\t'/$US}"
+}
+
+# fonts list [--all] [--tsv]: one line per face; --all adds the system fonts.
+# --tsv (for scripts and the GUI):
+#   source  state  flags  postscript  family  style  named-instances  path
+# source: library, fontconfig, prefix or wine. flags: comma-separated or "-":
+#   missing, unreadable; system (a library font with the PostScript name of an
+#   enabled system font); protected (needed by Affinity's UI, cannot be
+#   disabled); pending (system font changed, applies when Affinity starts).
 fonts_list() {
-    local tsv=0 i path state rows problem flags ps family style instances
-    [[ "${1:-}" == --tsv ]] && tsv=1
+    local all=0 i path state flags a
+    FONTS_TSV=0
+    for a in "$@"; do
+        case $a in
+            --tsv) FONTS_TSV=1 ;;
+            --all) all=1 ;;
+            *) die "usage: $AI_NAME fonts list [--all] [--tsv]" ;;
+        esac
+    done
     fonts_load
     fonts_scan_library
     fonts_scan_system
     for i in "${!LIB_PATH[@]}"; do
-        path=${LIB_PATH[$i]} state=${LIB_STATE[$i]} rows=${FONT_ROWS[${LIB_PATH[$i]}]:-} problem=""
-        if [[ -z "$rows" ]]; then
-            [[ -f "$path" ]] && problem=unreadable || problem=missing
-            rows=$'-\t0\t\t\t\t0'
+        _fonts_rows library "${LIB_STATE[$i]}" "" "${LIB_PATH[$i]}" "${LIB_PATH[$i]}"
+    done
+    ((all)) || return 0
+    for i in "${!SYS_PATH[@]}"; do
+        path=${SYS_PATH[$i]} state=on flags=""
+        [[ -n "${SYS_OFF[$path]:-}" ]] && state=off
+        sys_protected "${SYS_SOURCE[$i]}" "$path" && flags=protected
+        if [[ "${SYS_OFF[$path]:+1}" != "${SYS_APPLIED[$path]:+1}" ]]; then
+            flags+=${flags:+,}pending
         fi
-        rows=${rows%$'\n'}
-        while IFS=$US read -r _ _ ps family style instances; do
-            flags=$problem
-            [[ -n "$ps" && -n "${SYSTEM_PS[$ps]:-}" ]] && flags+=${flags:+,}system
-            if ((tsv)); then
-                printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$state" "${flags:--}" "$ps" "$family" "$style" "${instances:-0}" "$path"
-            else
-                printf '%-3s  %-32s  %-40s  %s%s\n' "$state" "${ps:--}" "$family${style:+ / $style}" "$path" \
-                    "$( ((instances > 0)) && printf '  [variable, %s instances]' "$instances")${flags:+  [$flags]}"
-            fi
-        done <<<"${rows//$'\t'/$US}"
+        _fonts_rows "${SYS_SOURCE[$i]}" "$state" "$flags" "$(sys_file "$path")" "$path"
     done
 }
 
@@ -276,6 +308,7 @@ fonts_summary() {
     local on=0 total=0
     [[ -f "$FONTS_LIBRARY" ]] && on=$(grep -c $'^on\t' "$FONTS_LIBRARY") total=$(grep -c . "$FONTS_LIBRARY")
     printf '%s enabled / %s in library' "$on" "$total"
+    [[ -s "$FONTS_SYSTEM_OFF" ]] && printf ', %s system fonts disabled' "$(grep -c . "$FONTS_SYSTEM_OFF")"
 }
 
 cmd_fonts() {

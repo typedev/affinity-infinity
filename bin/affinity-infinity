@@ -7,7 +7,7 @@ ROOT=$(dirname "$(dirname "$SELF")")
 
 # shellcheck source=../versions.env
 source "$ROOT/versions.env"
-for _lib in common setup prefix affinity update selfupdate apl fontsync fonts fontlib webview2 dpi desktop; do
+for _lib in common setup prefix affinity update selfupdate apl fontsync fonts fontlib fontsys webview2 dpi desktop; do
     # shellcheck source=/dev/null
     source "$ROOT/lib/$_lib.sh"
 done
@@ -41,10 +41,15 @@ Commands:
                      Add font files (directories recursively) by reference and
                      enable them. A running Affinity picks up changes within a
                      second, also when a font file is rebuilt in place.
-  fonts enable|disable|remove --all | FILE|DIR|NAME...
+  fonts list --all    Also list the system fonts (fontconfig, the prefix,
+                     Wine) with their state; --tsv for scripts.
+  fonts enable|disable|remove [--system] --all | FILE|DIR|NAME...
                      NAME is a PostScript or family name. Enabling a font
                      disables other library fonts with the same PostScript
-                     name; remove only drops fonts from the library.
+                     name; remove only drops fonts from the library. System
+                     fonts (--system, or a name/path not in the library) are
+                     enabled/disabled when Affinity starts next; the fonts
+                     Affinity's interface needs cannot be disabled.
   webview2           EXPERIMENTAL: install the WebView2 runtime for web panels.
                      With Wine 11.0 and 11.12 its browser process crashes and
                      takes Affinity down when Help is opened.
@@ -183,6 +188,9 @@ cmd_run() {
             args+=("$a")
         fi
     done
+
+    # Last, as it may end the Wine session to clean the registry.
+    fonts_apply_system
 
     cd "$AFFINITY_DIR" || die "cannot enter $AFFINITY_DIR"
     # Read by the FontSync plugin inside Affinity.
