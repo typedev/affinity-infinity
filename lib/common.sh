@@ -17,6 +17,8 @@ CONFIG_FILE="$CONFIG_DIR/config.env"
 FONTS_DIR="$DATA_DIR/fonts"
 FONTS_LIBRARY="$FONTS_DIR/library.tsv"
 FONTS_ACTIVE="$FONTS_DIR/active.list"
+# Requests to the running Affinity (restart), see plugin/FontSync.
+FONTS_CONTROL="$FONTS_DIR/control"
 
 AFFINITY_DIR="$PREFIX_DIR/drive_c/Program Files/Affinity/Affinity"
 AFFINITY_WIN_DIR='C:\Program Files\Affinity\Affinity'

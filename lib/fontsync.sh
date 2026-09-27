@@ -21,7 +21,7 @@ fontsync_outdated() {
 # Build and install the plugin. Failure only costs the font manager, so it warns
 # instead of stopping the install or the start of Affinity.
 fontsync_install() {
-    local csc='C:\windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+    local net='C:\windows\Microsoft.NET\Framework64\v4.0.30319'
     local out="$CACHE_DIR/FontSync.dll" logfile="$CACHE_DIR/fontsync-build.log" attempt
     [[ -f "$FONTSYNC_SRC" ]] || return 0
     [[ -f "$AFFINITY_DIR/AffinityPluginLoader.dll" ]] || { warn "AffinityPluginLoader missing; font manager plugin not built"; return 0; }
@@ -31,9 +31,11 @@ fontsync_install() {
     for attempt in 1 2; do
         rm -f "$out"
         with_spinner "Building the font manager plugin..." \
-            wine "$csc" /nologo /target:library /platform:x64 /optimize \
+            wine "$net\\csc.exe" /nologo /target:library /platform:x64 /optimize \
             "/out:$(to_winpath "$out")" \
             "/r:$AFFINITY_WIN_DIR\\AffinityPluginLoader.dll" "/r:$AFFINITY_WIN_DIR\\0Harmony.dll" \
+            "/r:$net\\WPF\\PresentationFramework.dll" "/r:$net\\WPF\\WindowsBase.dll" \
+            "/r:$net\\WPF\\PresentationCore.dll" "/r:$net\\System.Xaml.dll" \
             "$(to_winpath "$FONTSYNC_SRC")" >"$logfile" 2>&1
         wineserver -w
         [[ -s "$out" ]] && break

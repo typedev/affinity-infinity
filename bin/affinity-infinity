@@ -29,6 +29,9 @@ Commands:
                      Install Affinity from the official installer (downloaded
                      unless FILE is given) plus AffinityPluginLoader/WineFix.
   update [--gui]     Install a newer Affinity if one was published.
+  restart            Close Affinity like its close button does (it asks about
+                     unsaved documents) and start it again, e.g. to apply
+                     system font changes.
   check              Check for a newer Affinity (exit 0 = update available).
   run [FILE...]      Start Affinity. Offers to install a newer Affinity first
                      (AUTO_UPDATE_CHECK=0 in the config turns this off).
@@ -174,7 +177,9 @@ cmd_run() {
     fi
 
     d3d12_outdated && install_d3d12
-    fontsync_outdated && fontsync_install
+    # Both wait for the Wine session to end (wineserver -w): not while Affinity
+    # already runs (e.g. a document opened from the file manager).
+    affinity_running || { fontsync_outdated && fontsync_install; }
     [[ "$(state_get PREFIX_CONFIGURED)" == "$PREFIX_CONFIG_REV" ]] || prefix_configure
     apply_dpi
 
@@ -190,11 +195,11 @@ cmd_run() {
     done
 
     # Last, as it may end the Wine session to clean the registry.
-    fonts_apply_system
+    affinity_running || fonts_apply_system
 
     cd "$AFFINITY_DIR" || die "cannot enter $AFFINITY_DIR"
     # Read by the FontSync plugin inside Affinity.
-    export AI_FONTS_LIST="$FONTS_ACTIVE"
+    export AI_FONTS_LIST="$FONTS_ACTIVE" AI_FONTS_CONTROL="$FONTS_CONTROL"
     "$WINE_ROOT/bin/wine" "$AFFINITY_WIN_DIR\\AffinityHook.exe" "${args[@]}" &
     local launcher=$! rc watchdog
     exit_watchdog "$launcher" &
@@ -255,6 +260,7 @@ main() {
         update) cmd_update "$@" ;;
         check) cmd_check ;;
         run) cmd_run "$@" ;;
+        restart) cmd_restart ;;
         dpi) cmd_dpi "$@" ;;
         desktop) install_desktop ;;
         fonts) cmd_fonts "$@" ;;

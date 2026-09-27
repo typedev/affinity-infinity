@@ -8,6 +8,12 @@
 // and removes the listed fonts with AddFontResourceEx/RemoveFontResourceEx and
 // then broadcasts WM_FONTCHANGE, so changes show up without a restart.
 //
+// It also watches a control file (AI_FONTS_CONTROL): "close" written there
+// after Affinity started closes the main window on its UI thread, like the
+// close button: Affinity asks about unsaved documents, then the launcher
+// restarts it. The plugin answers in the same file: "closing" when it got the
+// request, "cancelled" when the user kept Affinity open.
+//
 // Written in C# 5 so it builds with the csc.exe of .NET Framework 4.8.
 using System;
 using System.Collections.Generic;
@@ -15,6 +21,8 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Windows;
+using System.Windows.Threading;
 using AffinityPluginLoader;
 
 [assembly: AssemblyTitle("FontSync")]
@@ -28,6 +36,8 @@ namespace AffinityInfinity.FontSync
     public class FontSyncPlugin : AffinityPlugin
     {
         const string ListEnv = "AI_FONTS_LIST";
+        const string ControlEnv = "AI_FONTS_CONTROL";
+        const int CancelTicks = 20;
         const int PollMs = 1000;
         const uint WM_FONTCHANGE = 0x001D;
         static readonly IntPtr HWND_BROADCAST = (IntPtr)0xffff;
@@ -47,11 +57,14 @@ namespace AffinityInfinity.FontSync
         IPluginContext context;
         string listPath;
         DateTime listWrite = DateTime.MinValue;
+        string controlPath;
+        DateTime controlSeen;
 
         public override void OnLoad(IPluginContext ctx)
         {
             context = ctx;
             string unixPath = Environment.GetEnvironmentVariable(ListEnv);
+            string control = Environment.GetEnvironmentVariable(ControlEnv);
             if (string.IsNullOrEmpty(unixPath))
             {
                 context.Log(ListEnv + " is not set; nothing to do");
@@ -59,6 +72,12 @@ namespace AffinityInfinity.FontSync
             }
             listPath = ToWindowsPath(unixPath);
             context.Log("watching " + listPath);
+            if (!string.IsNullOrEmpty(control))
+            {
+                controlPath = ToWindowsPath(control);
+                // Only requests made after this start count.
+                controlSeen = DateTime.UtcNow;
+            }
             // Affinity has not built its font list yet, so no notification is needed.
             Sync(false);
             Thread watcher = new Thread(Watch);
@@ -75,6 +94,7 @@ namespace AffinityInfinity.FontSync
                 try
                 {
                     Sync(true);
+                    CheckControl();
                 }
                 catch (Exception e)
                 {
@@ -122,6 +142,68 @@ namespace AffinityInfinity.FontSync
 
                 if (changed && notify)
                     PostMessageW(HWND_BROADCAST, WM_FONTCHANGE, IntPtr.Zero, IntPtr.Zero);
+            }
+        }
+
+        void CheckControl()
+        {
+            if (controlPath == null || !File.Exists(controlPath))
+                return;
+            DateTime write = File.GetLastWriteTimeUtc(controlPath);
+            if (write <= controlSeen)
+                return;
+            controlSeen = write;
+            if (File.ReadAllText(controlPath).Trim() != "close")
+                return;
+            Application app = Application.Current;
+            if (app == null)
+            {
+                context.LogWarning("close requested before Affinity's UI is up");
+                return;
+            }
+            context.Log("closing Affinity on request");
+            Answer("closing");
+            app.Dispatcher.BeginInvoke(new Action(delegate
+            {
+                Window main = app.MainWindow;
+                if (main == null)
+                    return;
+                // Returns once Affinity's questions about unsaved documents are
+                // answered; Affinity then closes its windows asynchronously, so a
+                // window still shown CancelTicks seconds later means "cancel".
+                main.Close();
+                int ticks = 0;
+                DispatcherTimer timer = new DispatcherTimer();
+                timer.Interval = TimeSpan.FromSeconds(1);
+                timer.Tick += delegate
+                {
+                    ticks++;
+                    if (!main.IsVisible)
+                    {
+                        timer.Stop();
+                        context.Log("main window closed after " + ticks + " s");
+                    }
+                    else if (ticks >= CancelTicks)
+                    {
+                        timer.Stop();
+                        context.Log("close cancelled");
+                        Answer("cancelled");
+                    }
+                };
+                timer.Start();
+            }));
+        }
+
+        void Answer(string text)
+        {
+            try
+            {
+                File.WriteAllText(controlPath, text + "\n");
+                controlSeen = File.GetLastWriteTimeUtc(controlPath);
+            }
+            catch (IOException e)
+            {
+                context.LogError("cannot answer in " + controlPath, e);
             }
         }
 
