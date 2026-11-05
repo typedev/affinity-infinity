@@ -20,10 +20,10 @@ What sets it apart:
 
 Nothing from Microsoft or Canva is redistributed:
 
-- **Wine** is built by this project (`wine/`): Wine 11.12 with the Affinity patches
+- **Wine** is built by this project (`wine/`): Wine 11.19 with the Affinity patches
   from [Affinity-Wine-Builder](https://github.com/ryzendew/Affinity-Wine-Builder)
-  (ElementalWarrior's work, d2d1 fixes, XDG portal file dialogs), a panel docking
-  fix of our own, and [vkd3d-proton](https://github.com/HansKristian-Work/vkd3d-proton),
+  (ElementalWarrior's work, the Affinity 3.3 set: panel docking, window focus,
+  OpenCL, rendering, d2d1 fixes, XDG portal file dialogs) and [vkd3d-proton](https://github.com/HansKristian-Work/vkd3d-proton),
   built on Ubuntu 22.04 (glibc 2.35) so it runs on current Ubuntu, Fedora and friends.
 - **The Windows environment** (Wine prefix with .NET Framework 4.8, VC++ 2022, core
   fonts) is built on your machine on first start, by winetricks from Microsoft's
@@ -227,7 +227,7 @@ Pinned inputs with checksums: `versions.env`, `wine/build.env`, `packaging/tools
 ```sh
 wine/build-in-container.sh             # build Wine in podman/docker -> wine/out/
 packaging/build-tools.sh               # winetricks + cabextract -> packaging/out/tools
-packaging/build-appimage.sh wine/out/wine-11.12-ai2-x86_64.tar.xz   # -> packaging/out/
+packaging/build-appimage.sh wine/out/wine-11.19-ai1-x86_64.tar.xz   # -> packaging/out/
 ```
 
 Running the CLI from the repository uses the Wine in `<data>/runtime/current`

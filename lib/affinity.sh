@@ -373,15 +373,22 @@ exit_watchdog() {
 }
 
 # Bump when prefix_configure changes, so existing prefixes get reconfigured on next run.
-PREFIX_CONFIG_REV=7
+PREFIX_CONFIG_REV=8
 
 # Per-application Wine settings for Affinity, independent of the Affinity version.
+# WPF renders its UI in software (DisableHWAcceleration): with the hardware path
+# (D3D9 over wined3d, enabled since Wine 11.19's patch 0051) a floating panel
+# resized keeps its old content size, e.g. the Layers buttons vanish below the
+# edge. Affinity's canvas has its own D3D11 renderer and is unaffected.
 prefix_configure() {
     reg_import <<'EOF' || die "failed to configure the Wine prefix"
 REGEDIT4
 
 [HKEY_CURRENT_USER\Software\Wine\AppDefaults\Affinity.exe]
 "DpiAwareness"="System"
+
+[HKEY_CURRENT_USER\Software\Microsoft\Avalon.Graphics]
+"DisableHWAcceleration"=dword:00000001
 
 [HKEY_CURRENT_USER\Software\Wine\AppDefaults\Affinity.exe\DllOverrides]
 "d2d1"="native,builtin"

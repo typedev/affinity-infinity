@@ -1,0 +1,26 @@
+From: Affinity Infinity
+Subject: [PATCH] winex11: Size owned palettes with the win32u loop, not the window manager.
+
+---
+--- a/dlls/winex11.drv/window.c	2026-11-05 12:39:39.728552661 -0300
++++ b/dlls/winex11.drv/window.c	2026-11-05 12:39:39.738474968 -0300
+@@ -3806,6 +3806,19 @@
+     case SC_SIZE:
+         /* windows without WS_THICKFRAME are not resizable through the window manager */
+         if (!(NtUserGetWindowLongW( hwnd, GWL_STYLE ) & WS_THICKFRAME)) goto failed;
++        /* Size owned palettes (the windows SC_MOVE moves internally above) with
++         * win32u's own loop too. A resize handed to the window manager sends the
++         * application no WM_SIZING, so it cannot keep the window to the sizes it
++         * allows while the window manager keeps resizing it: Affinity's floating
++         * panels, managed since 0057, could no longer be resized under Mutter
++         * and redrew garbage when they were. */
++        if (((NtUserGetWindowLongW( hwnd, GWL_EXSTYLE ) & WS_EX_TOOLWINDOW) ||
++             (NtUserGetWindowLongW( hwnd, GWL_STYLE ) & WS_CAPTION) != WS_CAPTION) &&
++            NtUserGetWindowRelative( hwnd, GW_OWNER ))
++        {
++            TRACE( "hwnd %p is an owned palette, sizing it internally\n", hwnd );
++            goto failed;
++        }
+ 
+         switch (hittest)
+         {

@@ -1,0 +1,84 @@
+
+Remove the line dlls/dxcore/tests in configure and configure.ac
+Downgrade the dlls/dxcore folder to Wine 10.8 dlls/dxcore
+
+
+diff -uNarp a/configure b/configure
+--- a/configure	2026-01-13 10:56:07.000000000 -0500
++++ b/configure	2026-01-21 09:06:39.172184288 -0500
+@@ -22579,7 +22579,6 @@ wine_fn_config_makefile dlls/dwrite enab
+ wine_fn_config_makefile dlls/dwrite/tests enable_tests
+ wine_fn_config_makefile dlls/dx8vb enable_dx8vb
+ wine_fn_config_makefile dlls/dxcore enable_dxcore
+-wine_fn_config_makefile dlls/dxcore/tests enable_tests
+ wine_fn_config_makefile dlls/dxdiagn enable_dxdiagn
+ wine_fn_config_makefile dlls/dxdiagn/tests enable_tests
+ wine_fn_config_makefile dlls/dxgi enable_dxgi
+diff -uNarp a/configure.ac b/configure.ac
+--- a/configure.ac	2026-01-13 10:56:07.000000000 -0500
++++ b/configure.ac	2026-01-21 09:07:02.268199948 -0500
+@@ -2721,7 +2721,6 @@ WINE_CONFIG_MAKEFILE(dlls/dwrite)
+ WINE_CONFIG_MAKEFILE(dlls/dwrite/tests)
+ WINE_CONFIG_MAKEFILE(dlls/dx8vb)
+ WINE_CONFIG_MAKEFILE(dlls/dxcore)
+-WINE_CONFIG_MAKEFILE(dlls/dxcore/tests)
+ WINE_CONFIG_MAKEFILE(dlls/dxdiagn)
+ WINE_CONFIG_MAKEFILE(dlls/dxdiagn/tests)
+ WINE_CONFIG_MAKEFILE(dlls/dxgi)
+diff -uNarp a/dlls/dxcore/main.c b/dlls/dxcore/main.c
+--- a/dlls/dxcore/main.c	1969-12-31 19:00:00.000000000 -0500
++++ b/dlls/dxcore/main.c	2025-05-16 15:59:26.000000000 -0400
+@@ -0,0 +1,28 @@
++/*
++ * Copyright (C) 2023 Mohamad Al-Jaf
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
++ */
++
++#include "dxcore.h"
++#include "wine/debug.h"
++
++WINE_DEFAULT_DEBUG_CHANNEL(dxcore);
++
++HRESULT WINAPI DXCoreCreateAdapterFactory( REFIID riid, void **ppv )
++{
++    FIXME( "riid %s, ppv %p stub!\n", debugstr_guid(riid), ppv );
++    return E_NOINTERFACE;
++}
+diff -uNarp a/dlls/dxcore/Makefile.in b/dlls/dxcore/Makefile.in
+--- a/dlls/dxcore/Makefile.in	2026-01-13 10:56:07.000000000 -0500
++++ b/dlls/dxcore/Makefile.in	2025-05-16 15:59:26.000000000 -0400
+@@ -1,5 +1,6 @@
+-MODULE  = dxcore.dll
+-IMPORTS = wined3d
++MODULE = dxcore.dll
+ 
++EXTRADLLFLAGS = -Wb,--prefer-native
++
+ SOURCES = \
+-	dxcore.c
++	main.c
+diff -uNarp a/dlls/dxcore/tests/Makefile.in b/dlls/dxcore/tests/Makefile.in
+--- a/dlls/dxcore/tests/Makefile.in	2026-01-13 10:56:07.000000000 -0500
++++ b/dlls/dxcore/tests/Makefile.in	1969-12-31 19:00:00.000000000 -0500
+@@ -1,5 +0,0 @@
+-TESTDLL = dxcore.dll
+-IMPORTS = user32 uuid
+-
+-SOURCES = \
+-	dxcore.c
+-- 
+2.47.1
+

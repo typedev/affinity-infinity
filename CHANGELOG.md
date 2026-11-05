@@ -4,6 +4,18 @@ All notable changes to Affinity Infinity. Versions are the AppImage releases
 (`v*` tags); the Wine builds they ship are released separately as
 `wine-<version>-ai<rev>`.
 
+## [Unreleased]
+
+### Changed
+- Ships Wine 11.19-ai1 with the current Affinity patch set from
+  Affinity-Wine-Builder (was 11.12). Affinity no longer hangs at startup when
+  an OpenCL driver is installed (e.g. Intel Arc, issue #1); fixes for window
+  focus and modal dialogs, process exit and rendering speed. Panel docking now
+  comes from the upstream patches; main windows are moved by the window manager
+  again (`WINE_X11_WM_MOVE` is gone). Floating panels are resized by Wine
+  (our patch), and Affinity's interface is drawn in software by WPF, as before:
+  hardware drawing left resized panels with their old content size.
+
 ## [0.3.1] - 2026-09-27
 
 ### Added
