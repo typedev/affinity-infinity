@@ -4,13 +4,14 @@ All notable changes to Affinity Infinity. Versions are the AppImage releases
 (`v*` tags); the Wine builds they ship are released separately as
 `wine-<version>-ai<rev>`.
 
-## [Unreleased]
+## [0.3.2] - 2026-11-05
 
 ### Changed
 - Ships Wine 11.19-ai1 with the current Affinity patch set from
-  Affinity-Wine-Builder (was 11.12). Affinity no longer hangs at startup when
-  an OpenCL driver is installed (e.g. Intel Arc, issue #1); fixes for window
-  focus and modal dialogs, process exit and rendering speed. Panel docking now
+  Affinity-Wine-Builder (was 11.12). It fixes a startup hang with an OpenCL
+  driver installed and modal dialogs hidden behind their window under KDE
+  Plasma, both candidates for the freeze in issue #1 (Intel Arc, not verified
+  here); also window focus, process exit and rendering speed. Panel docking now
   comes from the upstream patches; main windows are moved by the window manager
   again (`WINE_X11_WM_MOVE` is gone). Floating panels are resized by Wine
   (our patch), and Affinity's interface is drawn in software by WPF, as before:
